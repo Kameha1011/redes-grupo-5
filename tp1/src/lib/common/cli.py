@@ -8,7 +8,7 @@ def set_logger_args(parser: argparse.ArgumentParser):
     
 def set_connnection_args(parser: argparse.ArgumentParser):
     parser.add_argument("-H", "--host", help="service IP address", required=True)
-    parser.add_argument("-p", "--port", help="service port", required=True)
+    parser.add_argument("-p", "--port", help="service port", type=int, required=True)
     
 def set_protocol(parser: argparse.ArgumentParser):
     parser.add_argument(
