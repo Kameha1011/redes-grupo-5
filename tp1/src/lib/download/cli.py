@@ -5,7 +5,7 @@ def cli():
     parser = argparse.ArgumentParser(
         prog="download", 
         description="A client to download previously uploaded files from a server.",
-        usage='%(prog)s [ - h ] [ - v | -q ] [ - H ADDR ] [ - p PORT ] [ - d FILEPATH ] [ - n FILENAME ] [ - r protocol ]')
+        usage='%(prog)s [ -h ] [ -v | -q ] [ -H ADDR ] [ -p PORT ] [ -d FILEPATH ] [ -n FILENAME ] [ -r protocol ]')
     set_connnection_args(parser)
     set_logger_args(parser)
     set_protocol(parser)
