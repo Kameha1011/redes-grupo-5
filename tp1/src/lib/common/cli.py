@@ -1,5 +1,5 @@
 import argparse
-from ..constants import SELECTIVE_REPEAT, GO_BACK_N
+from ..constants import STOP_AND_WAIT, SELECTIVE_REPEAT
 
 def set_logger_args(parser: argparse.ArgumentParser):
     logger_level = parser.add_mutually_exclusive_group()
@@ -14,8 +14,8 @@ def set_protocol(parser: argparse.ArgumentParser):
     parser.add_argument(
                     "-r", 
                     "--protocol", 
-                    help="error recovery protocol: selective_repeat | go_back_n",
-                    choices=[SELECTIVE_REPEAT, GO_BACK_N],
+                    help="error recovery protocol: stop_and_wait | selective_repeat",
+                    choices=[STOP_AND_WAIT, SELECTIVE_REPEAT],
                     default=SELECTIVE_REPEAT)
     
 def set_file_name(parser: argparse.ArgumentParser):
