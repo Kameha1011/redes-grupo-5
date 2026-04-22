@@ -1,6 +1,6 @@
 import os
 from socket import *
-import threading
+# import threading
 
 BUFFER_SIZE=1024
 
@@ -24,8 +24,9 @@ class Server:
         
         while True:
             data, addr = self.socket.recvfrom(BUFFER_SIZE)
-            t = threading.Thread(target=self.handle_client, args=(data,addr))
-            t.start()
+            # t = threading.Thread(target=self.handle_client, args=(data,addr))
+            # t.start()
+            self.handle_client(data, addr)
             
     
     def handle_client(self, data: bytes, addr):
