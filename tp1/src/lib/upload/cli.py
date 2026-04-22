@@ -3,9 +3,9 @@ from ..common.cli import set_connnection_args, set_logger_args, set_protocol, se
 
 def cli():
     parser = argparse.ArgumentParser(
-        prog="download", 
-        description="A client to upload to a server.",
-        usage='%(prog)s [ - h ] [ - v | -q ] [ - H ADDR ] [ - p PORT ] [ - d FILEPATH ] [ - n FILENAME ] [ - r protocol ]')
+        prog="upload", 
+        description="A client to upload files to a server.",
+        usage='%(prog)s [ -h ] [ -v | -q ] [ -H ADDR ] [ -p PORT ] [ -s FILEPATH ] [ -n FILENAME ] [ -r protocol ]')
     set_connnection_args(parser)
     set_logger_args(parser)
     set_protocol(parser)
