@@ -1,4 +1,5 @@
 from socket import *
+from lib.common.file_handling import get_file
 
 class Client:
     def __init__(self, server_host: str, server_port: int):
@@ -19,3 +20,23 @@ class Client:
             # data, addr = self.socket.recvfrom(1024)
             # print(f"Server in {addr} says: {data.decode()}")
             data = self.socket.recv(1024)
+
+    def upload_file(self, src_filepath: str, name: str):
+        file_bytes = get_file(src_filepath)
+        
+        # Simulate several packets by sending the file in chunks
+        chunk_size = 1024
+        for i in range(0, len(file_bytes), chunk_size):
+            chunk = file_bytes[i:i+chunk_size]
+            self.socket.send(chunk)
+        # Send EOF to indicate the end of the file
+        self.socket.send(b"EOF")
+
+        # Alternative: send the whole file at once (not recommended for large files)
+        # self.socket.send(file_bytes)
+
+    def download_file(self, dst_path: str, name: str):
+        pass
+
+    def close(self):
+        self.socket.close()
