@@ -5,11 +5,17 @@ class Client:
         self.server_host = server_host
         self.server_port = server_port
         self.socket = socket(AF_INET, SOCK_DGRAM)
+        # self.socket.bind(('localhost', 0)) # Bind to any available port
+
+        # Fijar la dirección del servidor para evitar tener que especificarla en cada envío
+        self.socket.connect((server_host, server_port))
     
     def send_message(self, message: bytes):
-        self.socket.sendto(message,(self.server_host, self.server_port))
+        # self.socket.send(message,(self.server_host, self.server_port))
+        self.socket.send(message)
     
     def wait_response(self) -> bytes:
         while True:
-            data, addr = self.socket.recvfrom(1024)
-            print(f"Server in {addr} says: {data.decode()}")
+            # data, addr = self.socket.recvfrom(1024)
+            # print(f"Server in {addr} says: {data.decode()}")
+            data = self.socket.recv(1024)
