@@ -10,12 +10,13 @@ class Packet:
     #   |                       package id (4bytes)                                 |
 
 
-    # TYPE_DATA = 1
-    # TYPE_ACK = 2
-    # TYPE_CLOSE = 3
-    # TYPE_SYN = 4
+# TYPE_SYN = 0
+# TYPE_SYN_ACK = 1
+# TYPE_ACK = 2
+# TYPE_DATA = 3
+# TYPE_CLOSE = 4
+# TYPE_NACK = 5
 
-    HEADER_FORMAT = "!III" # ! = ordenado Big Endian ; I = 4 bytes integer => 12 bytes header
     HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
     def __init__(self, pkt_type, op_type, protocol, data=b"", seq_num=0):
@@ -36,16 +37,28 @@ class Packet:
         else:
             payload = self.data
 
-        header_part = struct.pack('!II', info, self.seq_num)
-        crc = zlib.crc32(header_part + payload)
-        header = struct.pack('!III', info, self.seq_num, crc)
+        header_part = struct.pack(HEADER_FORMAT, info, 0, self.seq_num)
+        self.crc = zlib.crc32(header_part + payload)
+
+        header = struct.pack(HEADER_FORMAT, info, self.crc, self.seq_num)
         return header + payload
 
     def _compose_info_field(self):
-        # creates first 4 bytes of header
-        info = 0 
-        info |= (self.pkt_type << 29) | (self.op_type << 28) | (self.protocol << 27)
-        info |= (self.data_length & PAYLOAD_LENGTH_FIELD_SIZE)
+        info = 0
+        
+        # pktType: bits 31-29
+        info |= (self.pkt_type << (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE))
+        
+        # Op: bit 28
+        info |= (self.op_type << (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE))
+        
+        # Protocol: bit 27
+        info |= (self.protocol << (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE))
+        
+        payload_mask = (1 << PAYLOAD_LENGTH_FIELD_SIZE) - 1
+        
+        info |= (self.data_length & payload_mask)
+        
         return info
     
     # def from_bytes(cls, raw_bytes):
@@ -76,16 +89,23 @@ class Packet:
         if len(raw_bytes) < cls.HEADER_SIZE:
             raise ValueError("Paquete corto para procesar")
         
-        header, seq_num, crc = struct.unpack(cls.HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
+        header, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
         
-        pkt_type = (header >> 29) & 0x07
-        op_type = (header >> 28) & 0x01
-        protocol = (header >> 27) & 0x01
-        data_len = header & 0x07FFFFFF 
+        pkt_type = (header >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE)) & 0x07
+        op_type = (header >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE)) & 0x01
+        protocol = (header >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE)) & 0x01
+
+        payload_mask = (1 << PAYLOAD_LENGTH_FIELD_SIZE) - 1
+        
+        data_len = header & payload_mask
         
         payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + data_len]
+        
+        headerToVerify = struct.pack(HEADER_FORMAT, header, 0, seq_num)
+        if zlib.crc32(headerToVerify + payload) != crc:
+            print(f"WARNING: CRC mismatch en paquete {seq_num}")
+            pass
         
         pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
         pkt.crc = crc
         return pkt
-    

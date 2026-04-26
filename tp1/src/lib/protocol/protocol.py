@@ -1,6 +1,6 @@
 from ..constants import *
 import struct
-from lib.common.packet import Packet
+from .packet import Packet
 
 class Protocol:
 
@@ -27,17 +27,20 @@ class Protocol:
         self.seq = self.seq + 1
         return pkt
     
-    def syn(self, filename, file_size, filepath):
+    def syn(self, filepath, filename, fileSize):
         # creates SYN package with:
-        # data as filename
-        # file size as sequence number
-        data = filepath + '\0' + filename
-        syn = Packet(TYPE_SYN, self.op_type, self.protocol, data, file_size)
+        seq_num = 0;
+        # 0: filename, 1: filesize, 2: filepath
+        data = f"{filename}\0{fileSize}\0{filepath}".encode()
+        syn = Packet(TYPE_SYN, self.op_type, self.protocol, data, seq_num)
         return syn
+    
+    def syn_ack(self, seq):
+        return Packet(TYPE_SYN_ACK, self.op_type, self.protocol, b"SYN-ACK", seq)
     
     def ack(self, seq):
         # creates ACK packet
-        ack = Packet(TYPE_ACK, self.op_type, self.protocol, seq)
+        ack = Packet(TYPE_ACK, self.op_type, self.protocol, b"", seq)
         return ack
 
     def get_needed_bytes(self):
