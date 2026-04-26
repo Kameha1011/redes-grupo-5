@@ -1,6 +1,6 @@
-import constants
+from ..constants import *
 import struct
-from packet import Packet
+from lib.common.packet import Packet
 
 class Protocol:
 
@@ -20,9 +20,10 @@ class Protocol:
         self.next_expected = 0
         self.file = file
 
-    def compose(self, pkt_type, data):
+    def compose(self, pkt_type, data, seq_num):
         #composes data packet and returns packet
-        pkt = Packet(pkt_type, self.op_type, self.protocol, data, self.seq)
+        self.seq = seq_num
+        pkt = Packet(pkt_type, self.op_type, self.protocol, data, seq_num)
         self.seq = self.seq + 1
         return pkt
     
@@ -31,12 +32,12 @@ class Protocol:
         # data as filename
         # file size as sequence number
         data = filepath + '\0' + filename
-        syn = Packet(constants.TYPE_SYN, self.op_type, self.protocol, data, file_size)
+        syn = Packet(TYPE_SYN, self.op_type, self.protocol, data, file_size)
         return syn
     
     def ack(self, seq):
         # creates ACK packet
-        ack = Packet(constants.TYPE_ACK, self.op_type, self.protocol, seq)
+        ack = Packet(TYPE_ACK, self.op_type, self.protocol, seq)
         return ack
 
     def get_needed_bytes(self):
@@ -49,7 +50,7 @@ class Protocol:
         pkts = []
         for i in range(0, len(data), self.chunk_size):
             chunk = data[i: i + self.chunk_size]
-            pkt = self.compose(constants.TYPE_DATA, chunk)
+            pkt = self.compose(TYPE_DATA, chunk)
             self.window[pkt.seq_num] = pkt
             pkts.append(pkt)
         return pkts
@@ -61,7 +62,7 @@ class Protocol:
         # hay que chequear el CRC que es el checksum con 
         # Packet.compare_checksum(raw_bytes)
         pkt_type, op_type, protocol, payload_length = self.parse_info_bytes(info)
-        if(pkt_type == constants.TYPE_SYN):
+        if(pkt_type == TYPE_SYN):
             data = []
         else: 
             data = raw_bytes[Packet.HEADER_SIZE:Packet.HEADER_SIZE + payload_length]
@@ -80,9 +81,9 @@ class Protocol:
         # bitwise operations
         #tttoplllllllllllllllllllllllllll
         pkt_type = info >> 29
-        op_type = (info >> 28) & constants.OP_TYPE_MASK
-        protocol = (info >> 27) & constants.PROTOCOL_MASK
-        payload_length = info & constants.PAYLOAD_LENGTH_MASK
+        op_type = (info >> 28) & OP_TYPE_MASK
+        protocol = (info >> 27) & PROTOCOL_MASK
+        payload_length = info & PAYLOAD_LENGTH_MASK
         return pkt_type, op_type, protocol, payload_length
     
     

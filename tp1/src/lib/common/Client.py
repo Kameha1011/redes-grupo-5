@@ -1,7 +1,8 @@
 from socket import *
 from lib.common.file_handling import get_file
-from protocol import Protocol
-from constants import *
+from .protocol import Protocol
+from ..constants import *
+import os
 
 class Client:
     def __init__(self, server_host: str, server_port: int):
@@ -21,32 +22,44 @@ class Client:
         while True:
             # data, addr = self.socket.recvfrom(1024)
             # print(f"Server in {addr} says: {data.decode()}")
-            data = self.socket.recv(1024)
+            data = self.socket.recv(BUFFER_SIZE)
 
     def begin(self, p, filepath, filename):
-        syn_pkt = p.syn(filepath, filename)
-        self.send_message(syn_pkt)
-        buf = self.socket.recv(HEADER_SIZE)
-        p
+        fileSize = os.path.getsize(filepath)
+        syn_pkt = p.syn(filepath, fileSize, filename)
+        self.send_message(syn_pkt.to_bytes())
+        print("SYN enviado, esperando respuesta...")
+        self.socket.settimeout(5.0)
+        try:
+            buf = self.socket.recv(HEADER_SIZE)
+        except timeout:
+            print("TIMEOUT")
 
-    def upload_file(self, src_filepath: str, name: str):
-        prt = Protocol(OP_TYPE_UPLOAD)
+    def upload_file(self, src_filepath: str, name: str, protocol_choice: int):
+        prt = Protocol(OP_TYPE_UPLOAD, protocol_choice)
         self.begin(prt, src_filepath, name)
+
+        fullPath = os.path.join(src_filepath, name)
         
-        file_bytes = get_file(src_filepath)
+        filebytes = get_file(fullPath)
         
-        # Simulate several packets by sending the file in chunks
-        chunk_size = 1024
-        for i in range(0, len(file_bytes), chunk_size):
-            chunk = file_bytes[i:i+chunk_size]
-            self.socket.send(chunk)
-        # Send EOF to indicate the end of the file
-        self.socket.send(b"EOF")
+        chunkSize = BUFFER_SIZE
+        seqNum = 1
+        
+        for i in range(0, len(filebytes), chunkSize):
+            chunk = filebytes[i:i+chunkSize]
+            
+            pkt = prt.compose(TYPE_DATA, chunk, seqNum)
+            
+            self.send_message(pkt.to_bytes())
+            
+            print(f"Enviando paquete {seqNum}...")
 
+            seqNum += 1
 
-
-        # Alternative: send the whole file at once (not recommended for large files)
-        # self.socket.send(file_bytes)
+        pktClose = prt.compose(TYPE_CLOSE, b"", seqNum)
+        self.send_message(pktClose.to_bytes())
+        print("Transferencia finalizada paquete TYPE_CLOSE enviado.")
 
     def download_file(self, dst_path: str, name: str):
         pass

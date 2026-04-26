@@ -1,15 +1,18 @@
-# Error recovery protocols
+# Protocolos
 STOP_AND_WAIT="stop_and_wait"
 SELECTIVE_REPEAT="selective_repeat"
+STOP_AND_WAIT_PROTOCOL=0
+SELECTIVE_REPEAT_PROTOCOL=1
 
 # Tipos de paquetes (como constantes)
 TYPE_DATA = 1
 TYPE_ACK = 2
-TYPE_FIN = 3
+TYPE_CLOSE = 3
 TYPE_SYN = 4
 
 PAYLOAD_SIZE = 1400
 HEADER_SIZE = 12
+BUFFER_SIZE = 1024
 
 OP_TYPE_UPLOAD = 1
 OP_TYPE_DOWNLOAD = 0

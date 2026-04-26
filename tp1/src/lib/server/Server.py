@@ -1,10 +1,11 @@
 import os
 from socket import *
+from ..constants import *
 
 from lib.common.file_handling import save_file
 # import threading
+from lib.common.protocol import Packet, TYPE_DATA, TYPE_CLOSE
 
-BUFFER_SIZE=1024
 
 class Server:
 
@@ -35,20 +36,24 @@ class Server:
             
     
     def handle_client(self, data: bytes, addr):
-        # parsed_data = data.decode()
-        # print(f"{addr} says: {parsed_data}")
-        # print(f"Answering a Hi! to {addr}")
-        # self.socket.sendto("Hi!".encode(), addr)
-
-
-        # What follows is experimental!
+        try:
+            pkt = Packet.from_bytes(data)
+        except Exception as e:
+            print(f"Error parseando paquete de {addr}: {e}")
+            return
 
         if addr not in self.buffers:
             self.buffers[addr] = bytes()
+            print(f"Iniciando recepción de {addr}")
 
-        self.buffers[addr] += data
+        if pkt.pkt_type == TYPE_DATA:
+            self.buffers[addr] += pkt.data
 
-        if self.buffers[addr].endswith(b"EOF"):
-            print(f"Received complete file from {addr}")
-            save_file(self.storage_path, f"file_from_{addr[0]}_{addr[1]}.dat", self.buffers[addr][:-3]) # Remove EOF
+        elif pkt.pkt_type == TYPE_CLOSE:
+            print(f"Transferencia finalizada paquete {addr} via TYPE_CLOSE")
+            
+            filename = f"upload_{addr[1]}.bin"
+            
+            save_file(self.storage_path, filename, self.buffers[addr])
+            
             del self.buffers[addr]
