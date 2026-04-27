@@ -27,5 +27,13 @@
 
 `python3 src/download.py -H 127.0.0.1 -p 9000 -d ~/Documents -n file.pdf -r stop_and_wait`
 
+## Wireshark packet monitoring
+
+We created a Wireshark plugin to filter out all packets coming from this project, to monitor packets run on your terminal:
+
+`wireshark -i lo -X  lua_script:plugin-wireshark/protocol.lua`
+
+Then on wireshark filters type `protocologrupo5` and it should filter the packets. 
+
 ## Examples
 
