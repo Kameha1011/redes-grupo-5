@@ -1,0 +1,94 @@
+from ..constants import *
+import struct
+from .packet import Packet
+
+class Protocol:
+
+    def __init__(self, 
+                 op_type, 
+                 prt,
+                 window_size=10, 
+                 chunk_size=1400,
+                 file = ""
+                 ):
+        self.op_type = op_type
+        self.protocol = prt
+        self.window_size = window_size
+        self.chunk_size = chunk_size
+        self.window = {} # sequence_number : data
+        self.seq = 0
+        self.next_expected = 0
+        self.file = file
+
+    def compose(self, pkt_type, data, seq_num):
+        #composes data packet and returns packet
+        self.seq = seq_num
+        pkt = Packet(pkt_type, self.op_type, self.protocol, data, seq_num)
+        self.seq = self.seq + 1
+        return pkt
+    
+    def syn(self, filepath, filename, fileSize):
+        # creates SYN package with:
+        seq_num = 0;
+        # 0: filename, 1: filesize, 2: filepath
+        data = f"{filename}\0{fileSize}\0{filepath}".encode()
+        syn = Packet(TYPE_SYN, self.op_type, self.protocol, data, seq_num)
+        return syn
+    
+    def syn_ack(self, seq):
+        return Packet(TYPE_SYN_ACK, self.op_type, self.protocol, b"SYN-ACK", seq)
+    
+    def ack(self, seq):
+        # creates ACK packet
+        ack = Packet(TYPE_ACK, self.op_type, self.protocol, b"", seq)
+        return ack
+
+    def get_needed_bytes(self):
+        # returns # of bytes needed to complete window
+        free_spaces = self.window_size - len(self.window)
+        return free_spaces * self.chunk_size
+    
+    def push_payload(self, data):  
+        # creates list of packages
+        pkts = []
+        for i in range(0, len(data), self.chunk_size):
+            chunk = data[i: i + self.chunk_size]
+            pkt = self.compose(TYPE_DATA, chunk)
+            self.window[pkt.seq_num] = pkt
+            pkts.append(pkt)
+        return pkts
+    
+    def parse_raw(self, raw_bytes):
+        # esta linea debería hacerse con un método de packet quizas
+        # para encapsular lógica
+        info, seq, crc = struct.unpack(Packet.HEADER_FORMAT, raw_bytes)
+        # hay que chequear el CRC que es el checksum con 
+        # Packet.compare_checksum(raw_bytes)
+        pkt_type, op_type, protocol, payload_length = self.parse_info_bytes(info)
+        if(pkt_type == TYPE_SYN):
+            data = []
+        else: 
+            data = raw_bytes[Packet.HEADER_SIZE:Packet.HEADER_SIZE + payload_length]
+
+        if seq < self.next_expected:
+            return
+        if seq not in self.window:
+            self.window[seq] = data
+        while self.next_expected in self.window:
+            file_data = self.window.pop(self.next_expected)
+            self.file.write(file_data)
+            self.next_expected += 1
+
+    def parse_info_bytes(info):
+        # esta operación deberia ir en Packet
+        # bitwise operations
+        #tttoplllllllllllllllllllllllllll
+        pkt_type = info >> 29
+        op_type = (info >> 28) & OP_TYPE_MASK
+        protocol = (info >> 27) & PROTOCOL_MASK
+        payload_length = info & PAYLOAD_LENGTH_MASK
+        return pkt_type, op_type, protocol, payload_length
+    
+    
+    def _handle_file_data():
+        pass

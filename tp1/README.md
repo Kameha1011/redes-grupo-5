@@ -23,9 +23,9 @@
 
 - Now open other terminal and you can start uploading/downloading files like this:
 
-`python3 src/upload.py -H 0.0.0.0 -p 7000 -s ~/Documents -n file.pdf`
+`python3 src/upload.py -H 127.0.0.1 -p 9000 -s ~/Documents -n file.pdf -r stop_and_wait`
 
-`python3 src/download.py -H 0.0.0.0 -p 8000 -d ~/Documents -n file.pdf`
+`python3 src/download.py -H 127.0.0.1 -p 9000 -d ~/Documents -n file.pdf -r stop_and_wait`
 
 ## Examples
 
