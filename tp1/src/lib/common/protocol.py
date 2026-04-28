@@ -1,4 +1,4 @@
-from ..constants import *
+from .constants import *
 import struct
 from .packet import Packet
 from lib.common.logger import Logger
@@ -66,7 +66,7 @@ class Protocol:
         info, seq, crc = struct.unpack(Packet.HEADER_FORMAT, raw_bytes)
         # hay que chequear el CRC que es el checksum con 
         # Packet.compare_checksum(raw_bytes)
-        pkt_type, op_type, protocol, payload_length = self.parse_info_bytes(info)
+        pkt_type, op_type, protocol, payload_length = Packet.parse_info_bytes(info)
         if(pkt_type == TYPE_SYN):
             data = []
         else: 
@@ -80,16 +80,6 @@ class Protocol:
             file_data = self.window.pop(self.next_expected)
             self.file.write(file_data)
             self.next_expected += 1
-
-    def parse_info_bytes(info):
-        # esta operación deberia ir en Packet
-        # bitwise operations
-        #tttoplllllllllllllllllllllllllll
-        pkt_type = info >> 29
-        op_type = (info >> 28) & OP_TYPE_MASK
-        protocol = (info >> 27) & PROTOCOL_MASK
-        payload_length = info & PAYLOAD_LENGTH_MASK
-        return pkt_type, op_type, protocol, payload_length
     
     
     def _handle_file_data():

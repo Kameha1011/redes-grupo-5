@@ -1,8 +1,8 @@
 from socket import *
 from lib.common.file_handling import get_file
-from ..protocol.protocol import Protocol
-from ..protocol.packet import Packet
-from ..constants import *
+from ..common.protocol import Protocol
+from ..common.packet import Packet
+from ..common.constants import *
 import os
 
 class Client:

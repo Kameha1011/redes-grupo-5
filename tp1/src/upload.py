@@ -1,9 +1,9 @@
-from lib.common.Client import Client
-from lib.upload.cli import cli
-from lib.constants import SELECTIVE_REPEAT, STOP_AND_WAIT_PROTOCOL, SELECTIVE_REPEAT_PROTOCOL
+from tp1.src.lib.client.Client import Client
+from lib.common.cli import upload_parser
+from tp1.src.lib.common.constants import SELECTIVE_REPEAT, STOP_AND_WAIT_PROTOCOL, SELECTIVE_REPEAT_PROTOCOL
 
 def main():
-    args = cli()
+    args = upload_parser()
     client = Client(args.host, args.port)
     # client.send_message("Holaa soy upload".encode())
     # client.wait_response()

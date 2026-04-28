@@ -1,10 +1,10 @@
 import os
 from socket import *
-from ..constants import *
+from ..common.constants import *
 from lib.common.file_handling import save_file
 # import threading
-from lib.protocol.protocol import Protocol
-from lib.protocol.packet import Packet
+from tp1.src.lib.common.protocol import Protocol
+from tp1.src.lib.common.packet import Packet
 
 class Server:
 

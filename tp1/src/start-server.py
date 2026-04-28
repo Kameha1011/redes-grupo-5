@@ -1,8 +1,8 @@
-from lib.server.cli import cli
-from lib.server.Server import Server
+from lib.common.cli import server_parser
+from lib.server import Server
 
 def main():
-    args = cli()
+    args = server_parser()
     sv = Server(args.storage, args.host, args.port)
     sv.start()
 

@@ -1,6 +1,6 @@
 import struct 
 import zlib
-from ..constants import *
+from .constants import *
 
 class Packet:
 
@@ -85,27 +85,34 @@ class Packet:
         return expected_checksum == real_checksum
     
     @classmethod
+    def parse_info_bytes(cls, info):
+        # esta operación deberia ir en Packet
+        # bitwise operations
+        #tttoplllllllllllllllllllllllllll
+        pkt_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE)) & PKT_TYPE_MASK
+        op_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE)) & OP_TYPE_MASK
+        protocol = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE)) & PROTOCOL_MASK
+        payload_length = info & PAYLOAD_LENGTH_MASK
+        return pkt_type, op_type, protocol, payload_length
+    
+    @classmethod
     def from_bytes(cls, raw_bytes):
         if len(raw_bytes) < cls.HEADER_SIZE:
             raise ValueError("Paquete corto para procesar")
         
         header, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
         
-        pkt_type = (header >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE)) & 0x07
-        op_type = (header >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE)) & 0x01
-        protocol = (header >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE)) & 0x01
-
-        payload_mask = (1 << PAYLOAD_LENGTH_FIELD_SIZE) - 1
+        pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(header)
         
-        data_len = header & payload_mask
+        payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + payload_length]
         
-        payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + data_len]
-        
-        headerToVerify = struct.pack(HEADER_FORMAT, header, 0, seq_num)
-        if zlib.crc32(headerToVerify + payload) != crc:
+        header_to_verify = struct.pack(HEADER_FORMAT, header, 0, seq_num)
+        if zlib.crc32(header_to_verify + payload) != crc:
             print(f"WARNING: CRC mismatch en paquete {seq_num}")
             pass
         
         pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
         pkt.crc = crc
         return pkt
+    
+
