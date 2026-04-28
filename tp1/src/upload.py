@@ -1,17 +1,19 @@
 from lib.common.Client import Client
+from lib.protocol.stop_and_wait import StopAndWait
 from lib.upload.cli import cli
-from lib.constants import SELECTIVE_REPEAT, STOP_AND_WAIT_PROTOCOL, SELECTIVE_REPEAT_PROTOCOL
+from lib.constants import STOP_AND_WAIT, OP_TYPE_UPLOAD
 
 def main():
     args = cli()
-    client = Client(args.host, args.port)
-    # client.send_message("Holaa soy upload".encode())
-    # client.wait_response()
 
-    protocol_choice = SELECTIVE_REPEAT_PROTOCOL if args.protocol == SELECTIVE_REPEAT else STOP_AND_WAIT_PROTOCOL
+    protocol_choice = StopAndWait(
+        op_type=OP_TYPE_UPLOAD,
+        server_host=args.host,
+        server_port=args.port
+        ) if args.protocol == STOP_AND_WAIT else None
 
-    client.upload_file(args.src, args.name, protocol_choice)
-    client.close()
+    client = Client(protocol_choice)
+    client.upload_file(args.src, args.name)
 
 if __name__ == "__main__":
     main()
