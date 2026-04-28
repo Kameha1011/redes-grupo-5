@@ -1,6 +1,7 @@
 from ..constants import *
 import struct
 from .packet import Packet
+from lib.common.logger import Logger
 
 class Protocol:
 
@@ -11,6 +12,7 @@ class Protocol:
                  chunk_size=1400,
                  file = ""
                  ):
+        self.logger = Logger.get_logger("PROTOCOL")
         self.op_type = op_type
         self.protocol = prt
         self.window_size = window_size
