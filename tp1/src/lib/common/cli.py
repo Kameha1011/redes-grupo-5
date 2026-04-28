@@ -41,15 +41,18 @@ def _create_parser(description=""):
         description=description
     )
 
+def _set_client_args(parser):
+    _set_connection_args(parser)
+    _set_logger_args(parser)
+    _set_protocol(parser)
+    _set_file_name(parser)
+
 def download_parser():
     parser = _create_parser("download a file from specified server")
     parser.prog = "download"
     parser.usage = (
         '%(prog)s [ -h ] [ -v | -q ] [ -H ADDR ] [ -p PORT ] [ -d FILEPATH ] [ -n FILENAME ] [ -r protocol ]')
-    _set_connection_args(parser)
-    _set_logger_args(parser)
-    _set_protocol(parser)
-    _set_file_name(parser)
+    _set_client_args(parser)
     parser.add_argument("-d", 
                         "--dst", 
                         help="dest file path", 
@@ -62,10 +65,7 @@ def upload_parser():
     parser.prog = "upload"
     parser.usage = (
         '%(prog)s [ -h ] [ -v | -q ] [ -H ADDR ] [ -p PORT ] [ -s FILEPATH ] [ -n FILENAME ] [ -r protocol ]')
-    _set_connection_args(parser)
-    _set_logger_args(parser)
-    _set_protocol(parser)
-    _set_file_name(parser)
+    _set_client_args(parser)
     parser.add_argument("-s", 
                         "--src", 
                         help="source file path", 
