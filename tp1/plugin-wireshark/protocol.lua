@@ -3,17 +3,20 @@ local protocol = Proto('ProtocoloGrupo5', 'TP Redes Grupo 5')
 --[[
 Header  12 Bytes
 
+    INFO:
     -- mainField (32 bits)
     3 bits de tipo de paquete 
     1 bit tipo de operación 
     1 bit protocolo (indicar StopAndWait (0) o SelectiveRepeat (1))
     27 bits de tamaño del payload
 
-    -- identityField (32 bits)
-    32 bits de identificador
-    
+    Cheksum CRC32:
     -- checksumField (32 bits)
     32 bits de checksum 
+
+    SEQ_NUM:
+    -- seqnumField (32 bits)
+    32 bits de identificador
 
 -- dataField
 DATA (hasta 1024 bytes)
@@ -49,15 +52,15 @@ local protocolSubfield = ProtoField.uint32('protocolSubfield', 'Protocolo', base
 local payloadSizeSubfield = ProtoField.uint32('payloadSizeSubfield', 'Tamanio del Payload', base.DEC, nil, 0x07FFFFFF)
 
 
-local identityField = ProtoField.uint32('identityField', 'Identificador', base.DEC)
-
 local checksumField = ProtoField.uint32('checksumField', 'Checksum', base.HEX)
+
+local seqnumField = ProtoField.uint32('seqnumField', 'Numero Secuencia', base.DEC)
 
 
 local dataField = ProtoField.bytes('dataField', 'DATA')
 
 
-protocol.fields = {mainField, packetTypeSubfield, operationTypeSubfield, protocolSubfield, payloadSizeSubfield, identityField, checksumField, dataField}
+protocol.fields = {mainField, packetTypeSubfield, operationTypeSubfield, protocolSubfield, payloadSizeSubfield, checksumField, seqnumField, dataField}
 
 
 -- Funcion para leer el header del paquete - hook dissector de lua
@@ -80,13 +83,25 @@ function protocol.dissector(buffer, pinfo, tree)
     mainTree:add(protocolSubfield, buffer(0,4))
     mainTree:add(payloadSizeSubfield, buffer(0,4))
 
-    subtree:add(identityField, buffer(4,4))
+    subtree:add(checksumField, buffer(4,4))
 
-    subtree:add(checksumField, buffer(8,4))
+    subtree:add(seqnumField, buffer(8,4))
 
-    if (buffer:len() > 12) then
+    local type_val = buffer(0,4):uint() >> 29
+    local types = {[0]='SYN', [1]='SYN-ACK', [2]='ACK', [3]='DATA', [4]='CLOSE', [5]='NACK'}
+    local type_name = types[type_val] or "Unknown"
+    local seq_val = buffer(8,4):uint()
+
+    local info_text = type_name .. " | Seq_Num: " .. seq_val
+
+    local headerLen = buffer:len()
+    if (headerLen > 12) then
         subtree:add(dataField, buffer(12))
+        info_text = info_text .. " | Data_Len: " .. (headerLen - 12)
     end
+
+    pinfo.cols.info:clear()
+    pinfo.cols.info = info_text
 
 end
 

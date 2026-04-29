@@ -5,9 +5,9 @@ from .constants import *
 class Packet:
 
     # header format: 
-    #   | package type (3bits) | op (1bit) | prt (1bit) | payload lenght (27bits)   |
-    #   |                     checksum CRC32 (4bytes)                               |
-    #   |                       package id (4bytes)                                 |
+    #   | INFO = package type (3bits) | op (1bit) | prt (1bit) | payload lenght (27bits)   |
+    #   |                     Checksum CRC32 (4bytes)                               |
+    #   |                       SEQ_NUM (4bytes)                                 |
 
 
 # TYPE_SYN = 0
@@ -60,20 +60,6 @@ class Packet:
         info |= (self.data_length & payload_mask)
         
         return info
-    
-    # def from_bytes(cls, raw_bytes):
-    #     # creates Packet instance from bytes
-    #     if len(raw_bytes) < cls.HEADER_SIZE:
-    #         return None
-        
-    #     # Extraemos el encabezado
-    #     header_raw = raw_bytes[:cls.HEADER_SIZE]
-    #     pkt_type, seq_num, data_len = struct.unpack(cls.HEADER_FORMAT, header_raw)
-        
-    #     # Extraemos los datos
-    #     data = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + data_len]
-    #     return pkt_type, seq_num, data
-    
 
     @staticmethod
     def compare_checksum(raw_packet):
@@ -100,13 +86,13 @@ class Packet:
         if len(raw_bytes) < cls.HEADER_SIZE:
             raise ValueError("Paquete corto para procesar")
         
-        header, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
+        info, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
         
-        pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(header)
+        pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
         
         payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + payload_length]
         
-        header_to_verify = struct.pack(HEADER_FORMAT, header, 0, seq_num)
+        header_to_verify = struct.pack(HEADER_FORMAT, info, 0, seq_num)
         if zlib.crc32(header_to_verify + payload) != crc:
             print(f"WARNING: CRC mismatch en paquete {seq_num}")
             pass
@@ -114,5 +100,3 @@ class Packet:
         pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
         pkt.crc = crc
         return pkt
-    
-
