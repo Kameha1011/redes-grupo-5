@@ -1,5 +1,5 @@
 from lib.common.cli import server_parser
-from lib.server import Server
+from lib.server.Server import Server
 
 def main():
     args = server_parser()
