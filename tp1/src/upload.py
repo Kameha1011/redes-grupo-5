@@ -1,6 +1,6 @@
-from tp1.src.lib.client.Client import Client
+from lib.client.Client import Client
 from lib.common.cli import upload_parser
-from tp1.src.lib.common.constants import OP_TYPE_UPLOAD
+from lib.common.constants import OP_TYPE_UPLOAD
 
 def main():
     args = upload_parser()

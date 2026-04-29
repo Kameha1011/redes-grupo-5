@@ -1,6 +1,6 @@
 from .protocol import Protocol
 from .packet import Packet
-from ..constants import BUFFER_SIZE, TYPE_ACK, TYPE_CLOSE, TYPE_DATA, STOP_AND_WAIT_PROTOCOL
+from .constants import BUFFER_SIZE, TYPE_ACK, TYPE_CLOSE, TYPE_DATA, STOP_AND_WAIT_PROTOCOL
 from socket import socket, timeout
 
 class StopAndWait(Protocol):

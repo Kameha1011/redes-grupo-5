@@ -1,4 +1,4 @@
-from ..constants import (
+from .constants import (
     SELECTIVE_REPEAT,
     SELECTIVE_REPEAT_PROTOCOL,
     STOP_AND_WAIT,

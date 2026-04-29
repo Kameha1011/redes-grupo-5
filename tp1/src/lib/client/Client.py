@@ -1,6 +1,6 @@
 from lib.common.file_handling import get_file
-from ..protocol.handshake import Handshake
-from ..constants import *
+from ..common.handshake import Handshake
+from ..common.constants import *
 import os
 
 class Client:

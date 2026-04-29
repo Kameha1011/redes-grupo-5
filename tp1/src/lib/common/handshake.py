@@ -1,7 +1,7 @@
 from .packet import Packet
 from .factory import create_protocol, protocol_id_from_choice
 from socket import timeout, socket
-from ..constants import TYPE_SYN, HEADER_SIZE, TYPE_SYN_ACK
+from .constants import TYPE_SYN, HEADER_SIZE, TYPE_SYN_ACK
 from socket import AF_INET, SOCK_DGRAM, socket
 
 class Handshake():
