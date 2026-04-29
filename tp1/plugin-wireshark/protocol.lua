@@ -4,7 +4,7 @@ local protocol = Proto('ProtocoloGrupo5', 'TP Redes Grupo 5')
 Header  12 Bytes
 
     INFO:
-    -- mainField (32 bits)
+    -- infoField (32 bits)
     3 bits de tipo de paquete 
     1 bit tipo de operación 
     1 bit protocolo (indicar StopAndWait (0) o SelectiveRepeat (1))
@@ -35,7 +35,7 @@ Tipo operación:
 1 Upload 
 ]]
 
-local mainField = ProtoField.uint32('mainField', 'Principal', base.HEX)
+local infoField = ProtoField.uint32('infoField', 'Principal', base.HEX)
 
 local packetTypeSubfield = ProtoField.uint32('packetTypeSubfield', 'Tipo de Paquete', base.DEC, {
     [0]='SYN', [1]='SYN-ACK', [2]='ACK', [3]='DATA', [4]='CLOSE', [5]='NACK'
@@ -60,7 +60,7 @@ local seqnumField = ProtoField.uint32('seqnumField', 'Numero Secuencia', base.DE
 local dataField = ProtoField.bytes('dataField', 'DATA')
 
 
-protocol.fields = {mainField, packetTypeSubfield, operationTypeSubfield, protocolSubfield, payloadSizeSubfield, checksumField, seqnumField, dataField}
+protocol.fields = {infoField, packetTypeSubfield, operationTypeSubfield, protocolSubfield, payloadSizeSubfield, checksumField, seqnumField, dataField}
 
 
 -- Funcion para leer el header del paquete - hook dissector de lua
@@ -77,7 +77,7 @@ function protocol.dissector(buffer, pinfo, tree)
 
     local subtree = tree:add(protocol, buffer(), 'ProtocoloGrupo5')
 
-    local mainTree = subtree:add(mainField, buffer(0,4))
+    local mainTree = subtree:add(infoField, buffer(0,4))
     mainTree:add(packetTypeSubfield, buffer(0,4))
     mainTree:add(operationTypeSubfield, buffer(0,4))
     mainTree:add(protocolSubfield, buffer(0,4))
