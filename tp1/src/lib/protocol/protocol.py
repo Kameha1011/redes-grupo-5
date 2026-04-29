@@ -11,21 +11,19 @@ class Protocol(ABC):
                  self, 
                  op_type: str, 
                  prt: str,
-                 server_port: int,
-                 server_host: str,
+                 socket: socket,
                  window_size=10, 
                  chunk_size=1400,
                  file = ""
                  ):
-        self.socket = socket(AF_INET, SOCK_DGRAM)
-        self.socket.connect((server_host, server_port))
+        self.socket = socket
         self.op_type = op_type
         self.protocol = prt
         self.window_size = window_size
         self.chunk_size = chunk_size
         self.window = {} # sequence_number : data
         self.seq_num = 1
-        self.next_expected = 0
+        self.next_expected = 1
         self.file = file
 
     def get_chunk_size(self) -> int:
@@ -35,18 +33,7 @@ class Protocol(ABC):
         #composes data packet and returns packet
         pkt = Packet(pkt_type, self.op_type, self.protocol, data, self.seq_num)
         return pkt
-    
-    def syn(self, filepath, filename, fileSize):
-        # creates SYN package with:
-        seq_num = 0;
-        # 0: filename, 1: filesize, 2: filepath
-        data = f"{filename}\0{fileSize}\0{filepath}".encode()
-        syn = Packet(TYPE_SYN, self.op_type, self.protocol, data, seq_num)
-        return syn
-    
-    def syn_ack(self, seq):
-        return Packet(TYPE_SYN_ACK, self.op_type, self.protocol, b"SYN-ACK", seq)
-    
+
     def ack(self, seq):
         # creates ACK packet
         ack = Packet(TYPE_ACK, self.op_type, self.protocol, b"", seq)
@@ -88,6 +75,7 @@ class Protocol(ABC):
             self.file.write(file_data)
             self.next_expected += 1
 
+    @staticmethod
     def parse_info_bytes(info):
         # esta operación deberia ir en Packet
         # bitwise operations
@@ -117,12 +105,20 @@ class Protocol(ABC):
             self.socket.settimeout(None)
 
     def send_close(self):
-        pkt_close = self.compose(TYPE_CLOSE, b"", self.seq_num)
+        pkt_close = Packet(TYPE_CLOSE, self.op_type, self.protocol, b"", self.seq_num)
         self.socket.send(pkt_close.to_bytes())
         print("Transferencia finalizada paquete TYPE_CLOSE enviado.")
 
     @abstractmethod
     def send_data_packet(self, data: bytes):
+        pass
+
+    @abstractmethod
+    def receive_data_packet(self, pkt: Packet, addr=None):
+        pass
+
+    @abstractmethod
+    def handle_close(self, pkt: Packet, addr=None):
         pass
 
     @abstractmethod
