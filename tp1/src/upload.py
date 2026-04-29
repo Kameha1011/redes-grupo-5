@@ -1,9 +1,9 @@
-from lib.common.Client import Client
-from lib.upload.cli import cli
-from lib.constants import OP_TYPE_UPLOAD
+from tp1.src.lib.client.Client import Client
+from lib.common.cli import upload_parser
+from tp1.src.lib.common.constants import OP_TYPE_UPLOAD
 
 def main():
-    args = cli()
+    args = upload_parser()
 
     client = Client(args.protocol, args.host, args.port, OP_TYPE_UPLOAD)
     client.start(args.src, args.name)

@@ -1,10 +1,10 @@
 import os
 from socket import *
-from ..constants import *
+from ..common.constants import *
 from lib.common.file_handling import save_file
-from lib.protocol.packet import Packet
-from lib.protocol.handshake import Handshake
+from tp1.src.lib.protocol.handshake import Handshake
 from lib.protocol.factory import create_protocol
+from tp1.src.lib.common.packet import Packet
 
 class Server:
 

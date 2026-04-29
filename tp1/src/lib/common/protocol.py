@@ -1,9 +1,11 @@
-from ..constants import *
+from .constants import *
+import struct
 from .packet import Packet
 from socket import *
 import struct
 from abc import ABC, abstractmethod
 import os
+from lib.common.logger import Logger
 
 class Protocol(ABC):
 
@@ -17,6 +19,7 @@ class Protocol(ABC):
                  file = ""
                  ):
         self.socket = socket
+        self.logger = Logger.get_logger("PROTOCOL")
         self.op_type = op_type
         self.protocol = prt
         self.window_size = window_size
@@ -60,7 +63,7 @@ class Protocol(ABC):
         info, seq, crc = struct.unpack(Packet.HEADER_FORMAT, raw_bytes)
         # hay que chequear el CRC que es el checksum con 
         # Packet.compare_checksum(raw_bytes)
-        pkt_type, op_type, protocol, payload_length = self.parse_info_bytes(info)
+        pkt_type, op_type, protocol, payload_length = Packet.parse_info_bytes(info)
         if(pkt_type == TYPE_SYN):
             data = []
         else: 
