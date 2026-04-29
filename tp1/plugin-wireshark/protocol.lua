@@ -19,7 +19,7 @@ Header  12 Bytes
     32 bits de identificador
 
 -- dataField
-DATA (hasta 1024 bytes)
+DATA (hasta 1400 bytes)
 
 
 Tipo paquete:
