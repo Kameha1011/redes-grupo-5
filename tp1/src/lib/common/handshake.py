@@ -1,7 +1,7 @@
 from .packet import Packet
 from .factory import create_protocol, protocol_id_from_choice
 from socket import timeout, socket
-from .constants import TYPE_SYN, HEADER_SIZE, TYPE_SYN_ACK
+from .constants import TYPE_SYN, BUFFER_SIZE, TYPE_SYN_ACK
 from socket import AF_INET, SOCK_DGRAM, socket
 
 class Handshake():
@@ -18,7 +18,7 @@ class Handshake():
         sock.settimeout(5.0)
 
         try:
-            buf = sock.recv(HEADER_SIZE)
+            buf = sock.recv(BUFFER_SIZE)
             pkt = Packet.from_bytes(buf)
             
             if pkt.pkt_type != TYPE_SYN_ACK:
