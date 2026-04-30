@@ -34,19 +34,31 @@ class Server:
             self.handle_client(data, addr)
 
     def handle_handshake(self, packet: Packet, address: str):
-            print(f"Handshake recibido SYN de {address}")
-            decodedData = packet.data.decode().split('\0')
-            filename = decodedData[0]
+        print(f"Handshake recibido SYN de {address}")
+        decodedData = packet.data.decode().split('\0')
+        filename = decodedData[0]
+
+        if packet.op_type == OP_TYPE_DOWNLOAD:
+            print(f"Cliente solicita descargar: {filename}")
+            full_path = os.path.join(self.storage_path, filename)
+            if not os.path.exists(full_path):
+                print(f"Error: El archivo {filename} no existe en storage.")
+                return None 
+            filesize = os.path.getsize(full_path)
+        else:
             filesize = int(decodedData[1])
-            
             print(f"Cliente solicita subir: {filename} ({filesize} bytes)")
 
             if filesize > MAX_FILE_SIZE:
                 raise BufferError(f"Solicitud rechazada para el cliente {address}: el archivo supera el limite: ({filesize} bytes)")
-            
-            self.filenames[address] = filename
-            self.protocols[address] = create_protocol(packet.protocol, packet.op_type, self.socket)
-            self.buffers[address] = bytes()
+        
+        protocol = create_protocol(packet.protocol, packet.op_type, self.socket)
+
+        self.filenames[address] = filename
+        self.protocols[address] = protocol
+        self.buffers[address] = bytes()
+
+        return protocol
 
     def handle_client(self, data: bytes, addr):
         try:
@@ -56,8 +68,12 @@ class Server:
             return
 
         if pkt.pkt_type == TYPE_SYN:
-            self.handle_handshake(pkt, addr)
+            protocol = self.handle_handshake(pkt, addr) 
             Handshake.ack(self.socket, pkt, addr)
+            
+            if pkt.op_type == OP_TYPE_DOWNLOAD:
+                print(f"Iniciando envío de archivo a {addr}...")
+                self.start_download_transfer(protocol, self.filenames[addr], addr)
 
         elif pkt.pkt_type == TYPE_DATA:
             if addr not in self.buffers:
@@ -87,3 +103,21 @@ class Server:
             del self.buffers[addr]
             del self.protocols[addr]
             del self.filenames[addr]
+
+    def start_download_transfer(self, protocol, filename, addr):
+        fullPath = os.path.join(self.storage_path, filename)
+        
+        if not os.path.exists(fullPath):
+            print(f"Archivo {filename} no encontrado en storage.")
+            return
+
+        with open(fullPath, 'rb') as f:
+            while True:
+                chunk = f.read(protocol.chunk_size)
+                if not chunk:
+                    break
+                
+                protocol.send_data_packet(chunk, addr)
+        
+        protocol.end(addr)
+        print(f"Envío de {filename} finalizado con éxito.")

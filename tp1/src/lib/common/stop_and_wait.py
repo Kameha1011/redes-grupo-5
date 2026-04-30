@@ -19,9 +19,9 @@ class StopAndWait(Protocol):
         self.ack_timeout = ack_timeout
         self.max_retries = max_retries
 
-    def send_data_packet(self, data: bytes):
+    def send_data_packet(self, data: bytes, addr=None):
         pkt = Packet(TYPE_DATA, self.op_type, self.protocol, data, self.seq_num)
-        self._send_and_wait_ack(pkt)
+        self._send_and_wait_ack(pkt, addr)
 
     def receive_data_packet(self, pkt: Packet, addr=None):
         payloads = []
@@ -43,12 +43,16 @@ class StopAndWait(Protocol):
         else:
             self.socket.sendto(ack.to_bytes(), addr)
 
-    def _send_and_wait_ack(self, pkt: Packet):
+    def _send_and_wait_ack(self, pkt: Packet, addr=None):
         raw = pkt.to_bytes()
         previous_timeout = self.socket.gettimeout()
         try:
             for _ in range(self.max_retries):
-                self.socket.send(raw)
+                if addr:
+                    self.socket.sendto(raw, addr)
+                else:
+                    self.socket.send(raw)
+
                 self.socket.settimeout(self.ack_timeout)
                 try:
                     data = self.socket.recv(BUFFER_SIZE)
@@ -65,7 +69,33 @@ class StopAndWait(Protocol):
             self.socket.settimeout(previous_timeout)
         raise TimeoutError("No se recibio ACK en Stop-and-Wait.")
 
-    def end(self):
+    def end(self, addr=None):
         pkt = Packet(TYPE_CLOSE, self.op_type, self.protocol, b"", self.seq_num)
-        self._send_and_wait_ack(pkt)
-        self.socket.close()
+        self._send_and_wait_ack(pkt, addr)
+
+        if not addr:
+            # el unico que cierra la conexion es el cliente, el server mantiene siempre el socket activo para escuchar a cualq cliente
+            self.socket.close()
+
+    def receive_file(self, file):
+        previous_timeout = self.socket.gettimeout()
+        self.socket.settimeout(self.ack_timeout)
+        try:
+            while True:
+                try:
+                    buf, addr = self.socket.recvfrom(BUFFER_SIZE)
+                    pkt = Packet.from_bytes(buf)
+                    
+                    if pkt.pkt_type == TYPE_CLOSE:
+                        self.handle_close(pkt, addr)
+                        return
+                        
+                    if pkt.pkt_type == TYPE_DATA:
+                        payloads = self.receive_data_packet(pkt, addr)
+                        for data in payloads:
+                            file.write(data)
+                
+                except socket.timeout:
+                    raise TimeoutError("TIMEOUT: El servidor no responde.")
+        finally:
+            self.socket.settimeout(previous_timeout)
