@@ -56,15 +56,21 @@ class StopAndWait(Protocol):
                 self.socket.settimeout(self.ack_timeout)
                 try:
                     data = self.socket.recv(BUFFER_SIZE)
-                except timeout:
-                    continue
-                try:
+
+                    if not Packet.compare_checksum(data):
+                        print(f"[!] Checksum de ACK inválido. Retransmitiendo seq: {pkt.seq_num}...")
+                        continue 
+                    
                     ack_pkt = Packet.from_bytes(data)
-                except ValueError:
+                    
+                    if ack_pkt.pkt_type == TYPE_ACK and ack_pkt.seq_num == pkt.seq_num:
+                        self.seq_num += 1
+                        return
+                
+                except (timeout, ValueError):
+                    print(f"[!] Reintentando envío de paquete {pkt.seq_num}...")
                     continue
-                if ack_pkt.pkt_type == TYPE_ACK and ack_pkt.seq_num == pkt.seq_num:
-                    self.seq_num += 1
-                    return
+                
         finally:
             self.socket.settimeout(previous_timeout)
         raise TimeoutError("No se recibio ACK en Stop-and-Wait.")
@@ -84,6 +90,11 @@ class StopAndWait(Protocol):
             while True:
                 try:
                     buf, addr = self.socket.recvfrom(BUFFER_SIZE)
+                    
+                    if not Packet.compare_checksum(buf):
+                        print(f"[!] Checksum inválido de {addr}. Paquete corrupto, descartando...")
+                        continue
+                    
                     pkt = Packet.from_bytes(buf)
                     
                     if pkt.pkt_type == TYPE_CLOSE:
@@ -95,7 +106,8 @@ class StopAndWait(Protocol):
                         for data in payloads:
                             file.write(data)
                 
-                except socket.timeout:
-                    raise TimeoutError("TIMEOUT: El servidor no responde.")
+                except (timeout, ValueError):
+                    print(f"[!] Reintentando recibir paquete {pkt.seq_num}...")
+                    continue
         finally:
             self.socket.settimeout(previous_timeout)

@@ -86,16 +86,12 @@ class Packet:
         if len(raw_bytes) < cls.HEADER_SIZE:
             raise ValueError("Paquete corto para procesar")
         
+        if not cls.compare_checksum(raw_bytes):
+            raise ValueError("CRC mismatch: El paquete está corrupto")
+        
         info, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
-        
         pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
-        
         payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + payload_length]
-        
-        header_to_verify = struct.pack(HEADER_FORMAT, info, 0, seq_num)
-        if zlib.crc32(header_to_verify + payload) != crc:
-            print(f"WARNING: CRC mismatch en paquete {seq_num}")
-            pass
         
         pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
         pkt.crc = crc

@@ -31,14 +31,30 @@ class Client:
             raise NotImplementedError("Debes iniciar el handshake primero")
 
         fullPath = os.path.join(src_filepath, name)
-        fileSize = get_file(fullPath)
+        fileSize = os.path.getsize(fullPath)
         chunkSize = self.protocol.get_chunk_size()
-        
-        for i in range(0, len(fileSize), chunkSize):
-            chunk = fileSize[i:i+chunkSize]
-            self.protocol.send_data_packet(chunk)
+        bytesSent = 0
+        try:
+            # open file modo 'rb' (read binary)
+            with open(fullPath, 'rb') as f:
+                print(f"Subiendo {name} ({fileSize} bytes)...")
+                
+                while bytesSent < fileSize:
+                    chunk = f.read(chunkSize)
+                    if not chunk:
+                        break
+                    
+                    self.protocol.send_data_packet(chunk)
+                    bytesSent += len(chunk)
             
-        self.protocol.end()
+            self.protocol.end()
+            print(f"Subida {name} finalizada con éxito!")
+            
+        except TimeoutError as e:
+            print(f"TIMEOUT: {e}")
+            
+        except Exception as e:
+            print(f"Error: {e}")
 
     def download_file(self, dst_path: str, name: str):
         if self.protocol is None:
@@ -55,7 +71,7 @@ class Client:
                 print(f"Descargando {name} en {dst_path}...")
                 self.protocol.receive_file(file)
                 
-            print(f"Descarga de '{name}' finalizada con éxito!")
+            print(f"Descarga {name} finalizada con éxito!")
             
         except TimeoutError as e:
             print(f"TIMEOUT: {e}")
