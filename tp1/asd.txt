@@ -1,0 +1,133 @@
+
+
+
+2 3 4 1 
+
+espero 1, llega 2
+sacas 2 de ventana
+
+ventana no se mueve
+
+espero 1, llega 1 (ya esta 2)
+saco 1 de la ventana
+
+1 no esta en ventana:
+    espero = 2
+    next_packages = 1
+
+2 no esta en vetana:
+    espero = 3
+    next_packages = 2
+
+devuelvo evento tipo ack con next_packages = 2
+
+
+
+2 3 1
+
+1 ---- 11
+
+espero 1
+llega 2
+agrego 2 al buffer
+devuelvo vacio
+
+espero 1
+llega 1 (ya tengo 2)
+agrego 1
+
+data append data de 1
+seq_nums = [1]
+borro 1 del buffer 
+espero 2
+
+2 esta en el buffer:
+    data append data de 2
+    seq_nums = [1 2]
+    borro 2 del buffer
+    espero 3
+
+devuelvo(DATA, [1 2], data)
+
+
+
+
+
+
+
+
+
+
+
+
+llega 2 3 1
+
+llega 2
+espero 1
+no dup 
+agrego 2 a buffer
+
+2 no es 1:
+    devuelvo ack 2
+
+---
+llega 3
+espero 1
+no dup
+
+agrego 3 a buffer
+
+3 no es 1:
+    devuelvo ack 3
+
+
+---
+
+llega 1
+
+espero 1
+
+no dup
+ agrego 1 a buffer
+
+1 esta en buffer:
+    data = [1 ]
+    seq_nms = [1 ]
+    saco 1 del buffer
+    espero 2
+
+2 esta en buffer:
+    data = [1 2]
+    seq_nms = [1 2]
+    saco 2 del buffer
+    espero 3
+
+3 esta en buffer:
+    data = [1 2 3]
+    seq = [1 2 3]
+    saco 3 del buffer
+    espero 4
+
+1 no es 4
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

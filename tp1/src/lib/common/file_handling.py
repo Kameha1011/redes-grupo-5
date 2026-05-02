@@ -1,5 +1,6 @@
 from pathlib import Path
 
+BASE_DIR = Path("storage")
 
 def get_file(filepath: str) -> bytes:
     file_path = Path(filepath)
@@ -16,3 +17,22 @@ def save_file(dirpath: str, name: str, bytes: bytes) -> None:
     file_path = Path(dirpath) / name
     file_path.parent.mkdir(parents=True, exist_ok=True)
     file_path.write_bytes(bytes)
+
+def create_file(name: str):
+    path = BASE_DIR / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    f = open(path, "wb")  # binario
+    return f
+
+def write_chunk(f, data: bytes):
+    f.write(data)
+
+def open_file(path: str):
+    return open(path, "rb")
+
+def read_chunk(f, size: int) -> bytes:
+    return f.read(size)
+
+def get_size(path):
+    return Path(path).stat().st_size

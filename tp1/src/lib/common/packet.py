@@ -1,21 +1,18 @@
 import struct 
 import zlib
 from .constants import *
+from lib.common.exceptions import ChecksumError
+from lib.common.logger import Logger
+
+logger = Logger.get_logger("PACKET")
 
 class Packet:
-
     # header format: 
     #   | package type (3bits) | op (1bit) | prt (1bit) | payload lenght (27bits)   |
     #   |                     checksum CRC32 (4bytes)                               |
     #   |                       package id (4bytes)                                 |
 
 
-# TYPE_SYN = 0
-# TYPE_SYN_ACK = 1
-# TYPE_ACK = 2
-# TYPE_DATA = 3
-# TYPE_CLOSE = 4
-# TYPE_NACK = 5
 
     HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
@@ -27,6 +24,7 @@ class Packet:
         self.protocol = protocol
         self.crc = 0
         self.data_length = len(self.data)
+
 
     def to_bytes(self):
         # creates header and concatenates with data
@@ -41,6 +39,7 @@ class Packet:
         self.crc = zlib.crc32(header_part + payload)
 
         header = struct.pack(HEADER_FORMAT, info, self.crc, self.seq_num)
+        logger.debug(f"CRC: {self.crc}")
         return header + payload
 
     def _compose_info_field(self):
@@ -76,13 +75,12 @@ class Packet:
     
 
     @staticmethod
-    def compare_checksum(raw_packet):
+    def compare_checksum(raw_packet, crc):
         # get checksum from raw bytes
-        expected_checksum = struct.unpack_from("!I", raw_packet, 4)[0]
         # recompose packet with 0 in checksum field
         packet_to_validate = raw_packet[:4] + b'\x00\x00\x00\x00' + raw_packet[8:]
         real_checksum = zlib.crc32(packet_to_validate)
-        return expected_checksum == real_checksum
+        return crc == real_checksum
     
     @classmethod
     def parse_info_bytes(cls, info):
@@ -95,6 +93,7 @@ class Packet:
         payload_length = info & PAYLOAD_LENGTH_MASK
         return pkt_type, op_type, protocol, payload_length
     
+    # este método ya está escrito 
     @classmethod
     def from_bytes(cls, raw_bytes):
         if len(raw_bytes) < cls.HEADER_SIZE:
@@ -114,5 +113,19 @@ class Packet:
         pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
         pkt.crc = crc
         return pkt
+    
+    @classmethod 
+    def parse_bytes(cls, raw):
+        info, crc, seq = struct.unpack(
+            HEADER_FORMAT, raw[:cls.HEADER_SIZE])
+        pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
+        if(not cls.compare_checksum(raw, crc)):
+            logger.debug(f"Paquete {seq} corrupto: invalid Checksum")
+            raise ChecksumError(seq)
+        return cls(pkt_type, 
+                   op_type, 
+                   protocol, 
+                   raw[cls.HEADER_SIZE: cls.HEADER_SIZE + payload_length],
+                   seq)
     
 

@@ -78,16 +78,16 @@ class Protocol(ABC):
             self.file.write(file_data)
             self.next_expected += 1
 
-    @staticmethod
-    def parse_info_bytes(info):
-        # esta operación deberia ir en Packet
-        # bitwise operations
-        #tttoplllllllllllllllllllllllllll
-        pkt_type = info >> 29
-        op_type = (info >> 28) & OP_TYPE_MASK
-        protocol = (info >> 27) & PROTOCOL_MASK
-        payload_length = info & PAYLOAD_LENGTH_MASK
-        return pkt_type, op_type, protocol, payload_length
+    # @staticmethod
+    # def parse_info_bytes(info):
+    #     # esta operación deberia ir en Packet
+    #     # bitwise operations
+    #     #tttoplllllllllllllllllllllllllll
+    #     pkt_type = info >> 29
+    #     op_type = (info >> 28) & OP_TYPE_MASK
+    #     protocol = (info >> 27) & PROTOCOL_MASK
+    #     payload_length = info & PAYLOAD_LENGTH_MASK
+    #     return pkt_type, op_type, protocol, payload_length
 
     def start(self, file_path: str, file_name: str):
         file_size = os.path.getsize(file_path)
