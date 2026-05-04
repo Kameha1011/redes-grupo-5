@@ -6,6 +6,7 @@ import struct
 from abc import ABC, abstractmethod
 import os
 from lib.common.logger import Logger
+import time
 
 class Protocol(ABC):
 
@@ -14,11 +15,13 @@ class Protocol(ABC):
                  op_type: str, 
                  prt: str,
                  socket: socket,
+                 socketLock=None,
                  window_size=10, 
                  chunk_size=1400,
                  file = ""
                  ):
         self.socket = socket
+        self.socketLock = socketLock
         self.logger = Logger.get_logger("PROTOCOL")
         self.op_type = op_type
         self.protocol = prt
@@ -36,7 +39,26 @@ class Protocol(ABC):
         #composes data packet and returns packet
         pkt = Packet(pkt_type, self.op_type, self.protocol, data, self.seq_num)
         return pkt
+    
+    def safe_send(self, data_bytes, addr=None):
+        if self.socketLock:
+            with self.socketLock:
+                self._raw_send(data_bytes, addr)
+        else:
+            self._raw_send(data_bytes, addr)
 
+    def _raw_send(self, data_bytes, addr):
+        try:
+            if addr:
+                self.socket.sendto(data_bytes, addr)
+            else:
+                self.socket.send(data_bytes)
+        except OSError as e:
+            if e.errno == 11: # Resource temporarily unavailable
+                time.sleep(0.01)
+            else:
+                raise e
+    
     def ack(self, seq):
         # creates ACK packet
         ack = Packet(TYPE_ACK, self.op_type, self.protocol, b"", seq)
@@ -82,7 +104,6 @@ class Protocol(ABC):
     def parse_info_bytes(info):
         # esta operación deberia ir en Packet
         # bitwise operations
-        #tttoplllllllllllllllllllllllllll
         pkt_type = info >> 29
         op_type = (info >> 28) & OP_TYPE_MASK
         protocol = (info >> 27) & PROTOCOL_MASK
@@ -92,8 +113,7 @@ class Protocol(ABC):
     def start(self, file_path: str, file_name: str):
         file_size = os.path.getsize(file_path)
         syn_pkt = self.syn(file_path, file_name, file_size)
-        self.socket.send(syn_pkt.to_bytes())
-        self.socket.settimeout(5.0)
+        self.safe_send(syn_pkt.to_bytes())
 
         try:
             buf = self.socket.recv(HEADER_SIZE)
@@ -109,11 +129,11 @@ class Protocol(ABC):
 
     def send_close(self):
         pkt_close = Packet(TYPE_CLOSE, self.op_type, self.protocol, b"", self.seq_num)
-        self.socket.send(pkt_close.to_bytes())
+        self.safe_send(pkt_close.to_bytes())
         print("Transferencia finalizada paquete TYPE_CLOSE enviado.")
 
     @abstractmethod
-    def send_data_packet(self, data: bytes):
+    def send_data_packet(self, data: bytes, clientDataQueue=None):
         pass
 
     @abstractmethod

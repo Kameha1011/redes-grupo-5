@@ -17,9 +17,9 @@ def protocol_id_from_choice(protocol_choice):
     raise ValueError(f"Protocolo desconocido: {protocol_choice}")
 
 
-def create_protocol(protocol_id, op_type, sock, **kwargs):
+def create_protocol(protocol_id, op_type, sock, socketLock=None, **kwargs):
     if protocol_id == STOP_AND_WAIT_PROTOCOL:
-        return StopAndWait(op_type, sock, **kwargs)
+        return StopAndWait(op_type, sock, socketLock=socketLock, **kwargs)
     if protocol_id == SELECTIVE_REPEAT_PROTOCOL:
         raise NotImplementedError("Selective Repeat aun no esta implementado.")
     raise ValueError(f"ID de protocolo desconocido: {protocol_id}")

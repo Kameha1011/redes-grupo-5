@@ -74,7 +74,6 @@ class Packet:
     def parse_info_bytes(cls, info):
         # esta operación deberia ir en Packet
         # bitwise operations
-        #tttoplllllllllllllllllllllllllll
         pkt_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE)) & PKT_TYPE_MASK
         op_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE)) & OP_TYPE_MASK
         protocol = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE)) & PROTOCOL_MASK
