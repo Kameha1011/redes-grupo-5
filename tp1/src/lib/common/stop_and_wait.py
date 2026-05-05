@@ -162,3 +162,6 @@ class StopAndWait(Protocol):
     
     def _handle_syn_ack(self, pkt):
         return Event(EVENT_TYPE_SYN_ACK)
+    
+    def _handle_corrupt(self, pkt):
+        pass
