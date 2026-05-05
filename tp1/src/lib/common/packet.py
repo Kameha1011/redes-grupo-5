@@ -75,7 +75,7 @@ class Packet:
         info, crc, seq = struct.unpack(
             HEADER_FORMAT, raw[:cls.HEADER_SIZE])
         pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
-        if(not cls.compare_checksum(raw, crc)):
+        if not cls.compare_checksum(raw, crc):
             logger = Logger.get_logger("PACKET")
             logger.debug(f"Paquete {seq} corrupto: invalid Checksum")
             raise ChecksumError(seq)

@@ -1,12 +1,8 @@
 from .constants import *
-import struct
 from .packet import Packet
 from socket import *
-import struct
 from abc import ABC, abstractmethod
-import os
 from lib.common.logger import Logger
-import time
 
 class Protocol(ABC):
 
@@ -14,8 +10,7 @@ class Protocol(ABC):
                  self, 
                  op_type: str, 
                  window_size=WINDOW_SIZE, 
-                 chunk_size=PAYLOAD_SIZE,
-                 file = ""
+                 chunk_size=PAYLOAD_SIZE
                  ):
         self.logger = Logger.get_logger("PROTOCOL")
         self.op_type = op_type
@@ -29,18 +24,17 @@ class Protocol(ABC):
         return self.chunk_size
 
     def compose(self, pkt_type, data):
-        #composes data packet and returns packet
+        # Composes data packet and returns packet
         pkt = Packet(pkt_type, self.op_type, self.protocol, data, self.seq_num)
         return pkt
-
     
     def ack(self, seq):
-        # creates ACK packet
+        # Creates ACK packet
         ack = Packet(TYPE_ACK, self.op_type, self.protocol, b"", seq)
         return ack
     
     def push_payload(self, data):  
-        # creates list of packages
+        # Creates list of packages
         pkts = []
         for i in range(0, len(data), self.chunk_size):
             chunk = data[i: i + self.chunk_size]
@@ -48,4 +42,3 @@ class Protocol(ABC):
             self.window[pkt.seq_num] = pkt
             pkts.append(pkt)
         return pkts
-
