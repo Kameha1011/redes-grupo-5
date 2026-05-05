@@ -14,6 +14,7 @@ class SelectiveRepeat():
             chunk_size=PAYLOAD_SIZE):
         self.logger = Logger.get_logger("PROTOCOL")
         self.window_size = window_size
+        self.retransmissions = {}
         self.window = {}
         self.buffer = {}
         self.chunk_size = chunk_size
@@ -28,21 +29,20 @@ class SelectiveRepeat():
         for i in range(0, len(data), self.chunk_size):
             chunk = data[i: i + self.chunk_size]
             pkt = self.compose(TYPE_DATA, chunk)
-            self.window[pkt.seq_num] = pkt
-            self.logger.debug(f"PAQUETE: {pkt.seq_num}")
+            self.window[pkt.seq_num] = {"pkt" : pkt, 
+                                        "time":time.time()}
             #self.logger.debug(f"VENTANA: {self.window.keys()}")
             pkts.append(pkt.to_bytes())
-        self.logger.debug(f"PKTS LEN: {len(pkts)}")
         return pkts
     
-    def check_timeouts(self, timeout):
+    def get_timedouts(self):
         now = time.time()
         timed_out = []
         ## implementar window[seq] = { "pkt" = pkt, "send_time" = time.time()}
-        for seq, entry in self.window.items():
-            if now - entry["time"] > timeout:
-                timed_out.append(seq)
-
+        for _, entry in self.window.items():
+            if now - entry["time"] > ACK_TIMEOUT:
+                timed_out.append(entry["pkt"].to_bytes())
+                entry["time"] = time.time() # reseteo timer
         return timed_out
     
     def compose(self, pkt_type, data):
@@ -117,7 +117,6 @@ class SelectiveRepeat():
             self.logger.debug(
                 f"ERROR: Archivo muy grande. Máximo tamaño de archivo permitido {MAX_FILE_SIZE}")
             raise FilesizeError     
-        self.logger.debug("RETURN SYN HANDLER")
         return Event(EVENT_TYPE_HANDSHAKE, filename=filename, filesize=filesize, op_type=self.op_type)
         
     def _handle_fin(self, pkt):
@@ -138,7 +137,6 @@ class SelectiveRepeat():
         next_packages = 0 # desplazamiento de ventana
         # marco ACK
         #self.logger.debug(f"ACK ESPERADO: {self.next_expected}")
-
         if pkt.seq_num in self.window:
             del self.window[pkt.seq_num]
         # si hay elementos en window y el numero de secuencia
@@ -157,7 +155,7 @@ class SelectiveRepeat():
             return None
         # duplicado
         if seq in self.buffer:
-            return Event(EVENT_TYPE_ACK, seq=seq)
+            return Event(EVENT_TYPE_DATA, ack=seq)
         # agrego a buffer
         self.buffer[seq] = pkt.data
         data = []

@@ -81,9 +81,9 @@ class Server:
                     f"No pudo establecerse conexión con el cliente {addr[0]}:{addr[1]}"
                 )
                 break
-            except Exception as e:
-                self.logger.error(f"Error inesperado en hilo {addr}: {e}")
-                break
+            # except Exception as e:
+            #     self.logger.error(f"Error inesperado en hilo {addr}: {e}")
+            #     break
     
     def _handle_event(self, event, addr, protocol, file_handler):
         if event.type == EVENT_TYPE_HANDSHAKE:

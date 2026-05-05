@@ -31,11 +31,11 @@ class StopAndWait(Protocol):
         self._send_time = time.time()
         return [pkt.to_bytes()]
     
-    # def check_timeouts(self):
-    #     now = time.time()
-    #     if self._send_time + TIMEOUT > now:
-    #         # retransmitir
-    #         pass
+    def get_timedouts(self):
+        now = time.time()
+        if self._pending and self._send_time + ACK_TIMEOUT > now:
+            return [self._pending.to_bytes()]
+        return []
 
     def compose(self, pkt_type, data):
         #composes data packet and returns packet
@@ -162,3 +162,6 @@ class StopAndWait(Protocol):
     
     def _handle_syn_ack(self, pkt):
         return Event(EVENT_TYPE_SYN_ACK)
+    
+    def _handle_corrupt(self, pkt):
+        pass

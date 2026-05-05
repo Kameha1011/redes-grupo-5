@@ -6,6 +6,7 @@ from ..common.constants import *
 from lib.common.logger import Logger
 import time
 import os
+from lib.common.event import Event
 
 class Client:
     
@@ -78,7 +79,7 @@ class Client:
         if event.type == EVENT_TYPE_DATA:
             self.handle_data(event, addr, protocol)
         if event.type == EVENT_TYPE_ACK:
-            self.handle_ack(event.next, protocol)
+            self.handle_ack(event, protocol)
         if event.type == EVENT_TYPE_CLOSE:
             self.handle_close(protocol)
         if event.type == EVENT_TYPE_ACK_INIT:
@@ -91,12 +92,14 @@ class Client:
         ack = self.protocol.ack(0)
         self.socket.send(ack)
         if self.op_type == OP_TYPE_UPLOAD:
-            self.handle_ack(protocol.window_size, protocol)
+            event = Event(EVENT_TYPE_ACK, next=protocol.window_size)
+            self.handle_event(event, addr, protocol)
             
     def handle_data(self, event, addr, protocol):
         #self.logger.debug(f"Escribiendo: {event.data}")}
         self.send_message(protocol.ack(event.ack))
-        self.file_handler.write(b"".join(event.data))
+        if hasattr(event, "data"):
+            self.file_handler.write(b"".join(event.data))
 
     def close(self):
         self.file_handler.close()
@@ -105,14 +108,13 @@ class Client:
     def handle_handshake():
         pass
 
-    def handle_ack(self, advance, protocol):
-        #self.logger.debug(f"ADVANCE: {advance}")
-        #self.logger.debug(f"puntero: {self.file_handler.file.tell()}")
-        #self.logger.debug(f"tamaño: {self.file_handler.size()}")
-        #self.logger.debug(f"VENTANA: {protocol.window}")
+    def handle_ack(self, event, protocol):
+        for b in protocol.get_timedouts():
+            self.socket.send(b)
+        advance = event.next
         package_window = self.file_handler.read(advance*PAYLOAD_SIZE)
         for i in protocol.push_payload(package_window):
-                self.socket.send(i) 
+            self.socket.send(i) 
         #self.logger.debug(f"PACKAGE: {len(package_window)}")
         if not package_window and not protocol.window:
             self.logger.debug("FIN")
