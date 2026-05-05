@@ -7,6 +7,7 @@ from lib.common.file_handling import *
 from lib.common.logger import Logger
 import threading
 import queue
+from queue import Empty
 
 class Server:
 
@@ -59,22 +60,31 @@ class Server:
         protocol = None
         file_handler = FileHandler("storage")
         while True:
-            data = que.get(timeout=60)
-            try:    
+            try:
+                data = que.get(timeout=60)
+
                 if not initialized:
                     protocol = protocol_factory_create(data)
                     event = protocol.handle_handshake(data)
                     initialized = True
                 else: 
                     event = protocol.handle_packet(data)
+
+                if event:
+                    self._handle_event(event, addr, protocol, file_handler)
+
+            except Empty:
+                self.logger.info(f"Cerrando hilo para {addr} por inactividad.")
+                break
             except HandshakeError:
                 self.logger.info(
                     f"No pudo establecerse conexión con el cliente {addr[0]}:{addr[1]}"
                 )
-            if event:
-                self._handle_event(event, addr, protocol, file_handler)
-    # sacar al cliente de la col
-
+                break
+            except Exception as e:
+                self.logger.error(f"Error inesperado en hilo {addr}: {e}")
+                break
+    
     def _handle_event(self, event, addr, protocol, file_handler):
         if event.type == EVENT_TYPE_HANDSHAKE:
             self._handle_handshake(addr, event, protocol, file_handler)
