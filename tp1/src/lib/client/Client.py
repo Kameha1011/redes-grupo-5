@@ -52,7 +52,8 @@ class Client:
             try:
                 data, addr = self.socket.recvfrom(BUFFER_SIZE)
                 event = self.protocol.handle_packet(data)
-                self.handle_event(event, addr, self.protocol)
+                if event:
+                    self.handle_event(event, addr, self.protocol)
             except timeout:
                 # no llegó nada, retransmitir el paquete pendiente
                 for b in self.protocol.get_timedouts():
@@ -75,7 +76,8 @@ class Client:
             try:
                 data, addr = self.socket.recvfrom(BUFFER_SIZE)
                 event = self.protocol.handle_packet(data)
-                self.handle_event(event, addr, self.protocol)
+                if event:
+                    self.handle_event(event, addr, self.protocol)
             except timeout:
                 # no llegó nada, retransmitir el paquete pendiente
                 for b in self.protocol.get_timedouts():
@@ -109,7 +111,7 @@ class Client:
     def handle_data(self, event, addr, protocol):
         #self.logger.debug(f"Escribiendo: {event.data}")}
         self.send_message(protocol.ack(event.ack))
-        if hasattr(event, "data"):
+        if hasattr(event, "data") and event.data:
             self.file_handler.write(b"".join(event.data))
 
     def close(self):
@@ -123,11 +125,13 @@ class Client:
         for b in protocol.get_timedouts():
             self.socket.send(b)
         advance = event.next
-        package_window = self.file_handler.read(advance*PAYLOAD_SIZE)
-        for i in protocol.push_payload(package_window):
-            self.socket.send(i) 
+        package_window = self.file_handler.read(advance*PAYLOAD_SIZE) 
+        if package_window:
+            for i in protocol.push_payload(package_window):
+                self.socket.send(i) 
         #self.logger.debug(f"PACKAGE: {len(package_window)}")
-        if not package_window and not protocol.window:
+        waiting_ack = getattr(protocol, '_waiting_ack', False)
+        if not package_window and not protocol.window and not waiting_ack:
             self.logger.debug("FIN")
             fin = protocol.fin()
             self.socket.send(fin)

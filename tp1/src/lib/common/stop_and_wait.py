@@ -27,14 +27,17 @@ class StopAndWait(Protocol):
         # en SAW, mando de a un paquete
         pkt = self.compose(TYPE_DATA, data)
         self._pending = pkt
-        self.waiting_ack = True
+        self._waiting_ack = True
         self._send_time = time.time()
+        self.logger.debug(f"push_payload: {self._send_time}")
         return [pkt.to_bytes()]
     
     def get_timedouts(self):
         now = time.time()
         if self._pending and now > self._send_time + ACK_TIMEOUT:
+            self.logger.debug(f"get_timedouts PPPP: {self._pending.seq_num}")
             self._send_time = time.time()  # resetear timer
+            self._waiting_ack = True
             return [self._pending.to_bytes()]
         return []
 
@@ -59,7 +62,11 @@ class StopAndWait(Protocol):
         return fin_ack.to_bytes()
 
     def fin(self):
-        fin = Packet(TYPE_CLOSE, self.op_type, self.protocol)
+        fin = Packet(TYPE_CLOSE, self.op_type, self.protocol, b"", self.seq_num)
+        self._pending = fin
+        self._waiting_ack = True
+        self._send_time = time.time()
+        self.seq_num += 1
         return fin.to_bytes()
 
     def syn(self, filename, filesize):
@@ -158,6 +165,8 @@ class StopAndWait(Protocol):
         if pkt.seq_num == self.next_expected:
             self.next_expected += 1
             return Event(EVENT_TYPE_DATA, ack=pkt.seq_num, data=[pkt.data])
+        elif pkt.seq_num < self.next_expected:
+            return Event(EVENT_TYPE_DATA, ack=pkt.seq_num)
         return None
     
     def _handle_fin(self, pkt):

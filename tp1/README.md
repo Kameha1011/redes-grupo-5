@@ -9,7 +9,7 @@
 
 -  Arranca el servidor en tu terminal así:
 
-`python3 src/start-server.py -H 0.0.0.0 -p 9000 -s ./src/storage`
+`python3 src/start-server.py -H 0.0.0.0 -p 9000 -s ./storage`
 
 
 - Ahora, abre otra terminal y puedes correr el cliente como  download/upload así:
@@ -43,7 +43,7 @@ Luego en la barra de filtros de Wireshark tipea `protocologrupo5` y se deberian 
 `wireshark -i s1-eth1 -X lua_script:plugin-wireshark/protocol.lua`
 
 - En la terminal server ejecutar
-`python3 src/start-server.py -H 10.0.0.1 -p 9000 -s ./src/storage`
+`python3 src/start-server.py -H 10.0.0.1 -p 9000 -s ./storage`
 
 - En la terminal cliente ejecutar
 `python3 src/upload.py -H 10.0.0.1 -p 9000 -s ~/Documents/fileToUpload.txt -n prueba.txt -r stop_and_wait`

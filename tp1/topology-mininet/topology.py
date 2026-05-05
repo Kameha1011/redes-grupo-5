@@ -16,8 +16,8 @@ class MininetTopology(Topo):
         s1 = self.addSwitch('s1')
         
         # 10% de pérdida como pide el enunciado
-        self.addLink(server, s1, cls=TCLink, loss=10)
-        self.addLink(client, s1, cls=TCLink, loss=10)
+        self.addLink(server, s1, cls=TCLink, loss=5)
+        self.addLink(client, s1, cls=TCLink, loss=5)
 
 def open_terminals(net):
     """

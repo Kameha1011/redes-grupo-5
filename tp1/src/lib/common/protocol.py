@@ -33,12 +33,13 @@ class Protocol(ABC):
         ack = Packet(TYPE_ACK, self.op_type, self.protocol, b"", seq)
         return ack
     
-    def push_payload(self, data):  
-        # Creates list of packages
-        pkts = []
-        for i in range(0, len(data), self.chunk_size):
-            chunk = data[i: i + self.chunk_size]
-            pkt = self.compose(TYPE_DATA, chunk)
-            self.window[pkt.seq_num] = pkt
-            pkts.append(pkt)
-        return pkts
+    # def push_payload(self, data):  
+    #     # Creates list of packages
+    #     pkts = []
+    #     self.logger.debug(f"push_payload PPPP: {self._send_time}")
+    #     for i in range(0, len(data), self.chunk_size):
+    #         chunk = data[i: i + self.chunk_size]
+    #         pkt = self.compose(TYPE_DATA, chunk)
+    #         self.window[pkt.seq_num] = pkt
+    #         pkts.append(pkt)
+    #     return pkts

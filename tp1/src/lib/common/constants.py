@@ -16,7 +16,7 @@ TYPE_CLOSE_ACK = 6
 HEADER_FORMAT = "!III" # ! = ordenado Big Endian ; I = 4 bytes integer => 12 bytes header
 PAYLOAD_SIZE = 1400 # bytes
 HEADER_SIZE = 12 # bytes
-WINDOW_SIZE = 30
+WINDOW_SIZE = 20
 
 # MTU Estándar (1500) / PAYLOAD_SIZE (1400) + HEADER_SIZE (12) + Header IP (20) + Header UDP (8) + Header Ethernet (14) + Margen de seguridad = 2048
 BUFFER_SIZE = 2048

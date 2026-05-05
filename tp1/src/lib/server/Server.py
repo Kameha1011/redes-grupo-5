@@ -59,9 +59,11 @@ class Server:
         initialized = False
         protocol = None
         file_handler = FileHandler("storage")
+        inactivity = 0
         while True:
             try:
-                data = que.get(timeout=60)
+                data = que.get(timeout=ACK_TIMEOUT)
+                inactivity = 0
 
                 if not initialized:
                     protocol = protocol_factory_create(data)
@@ -72,10 +74,18 @@ class Server:
 
                 if event:
                     self._handle_event(event, addr, protocol, file_handler)
+                    if event.type == EVENT_TYPE_CLOSE_FIN:
+                        self.logger.info(f"Cerrando hilo para {addr} por fin de conexión.")
+                        break
 
             except Empty:
-                self.logger.info(f"Cerrando hilo para {addr} por inactividad.")
-                break
+                inactivity += ACK_TIMEOUT
+                if inactivity >= 60:
+                    self.logger.info(f"Cerrando hilo para {addr} por inactividad.")
+                    break
+                if initialized and protocol:
+                    for b in protocol.get_timedouts():
+                        self.socket.sendto(b, addr)
             except HandshakeError:
                 self.logger.info(
                     f"No pudo establecerse conexión con el cliente {addr[0]}:{addr[1]}"
@@ -120,17 +130,24 @@ class Server:
         #self.logger.info(f"llegaron los sequence: {event.ack}")
         self.socket.sendto(protocol.ack(event.ack), addr)
         #self.logger.debug(f"Escribiendo: {event.data}")
-        self.logger.debug(f"DATA: {len(event.data[0])}")
         
-        file_handler.write(b"".join(event.data))
+        if hasattr(event, "data") and event.data:
+
+            self.logger.debug(f"DATA: {len(event.data[0])}")
+
+            file_handler.write(b"".join(event.data))
 
     def _handle_ack(self, event, addr, protocol, file_handler):
-        window_slide = event.next  
-        package_window = file_handler.read(window_slide*PAYLOAD_SIZE)
-        for i in protocol.push_payload(package_window):
-            self.socket.sendto(i, addr)
-
-        if file_handler.eof() and not protocol.window:
+        for b in protocol.get_timedouts():
+            self.socket.send(b)
+        advance = event.next
+        package_window = file_handler.read(advance*PAYLOAD_SIZE) 
+        if package_window:
+            for i in protocol.push_payload(package_window):
+                self.socket.sendto(i, addr)
+        
+        waiting_ack = getattr(protocol, '_waiting_ack', False)
+        if file_handler.eof() and not protocol.window and not waiting_ack:
             self.logger.debug("FIN")
             fin = protocol.fin()
             self.socket.sendto(fin, addr)

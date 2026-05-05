@@ -66,7 +66,9 @@ class SelectiveRepeat():
         return ack.to_bytes()
 
     def fin(self):
-        fin = Packet(TYPE_CLOSE, self.op_type, self.protocol)
+        fin = Packet(TYPE_CLOSE, self.op_type, self.protocol, b"", self.seq_num)
+        self.window[fin.seq_num] = {"pkt": fin, "time": time.time()}
+        self.seq_num += 1
         return fin.to_bytes()
 
     def syn(self, filename, filesize):
@@ -139,19 +141,21 @@ class SelectiveRepeat():
         #self.logger.debug(f"ACK ESPERADO: {self.next_expected}")
         if pkt.seq_num in self.window:
             del self.window[pkt.seq_num]
-        # si hay elementos en window y el numero de secuencia
-        # que espero no está en la ventana, significa que fue recibido
-        # entonces, subo el numero de secuencia expera
-        # la ventana se corre next_packages
-        while self.window and self.next_expected not in self.window:
+        # si el numero de secuencia esperado es menor al proximo a enviar
+        # y no esta en la ventana (porque ya se le hizo ACK y se borro),
+        # significa que fue recibido y podemos correr la ventana.
+        while self.next_expected < self.seq_num and self.next_expected not in self.window:
             self.next_expected += 1
             next_packages += 1
         return Event(EVENT_TYPE_ACK, next=next_packages)
 
     def _handle_data(self, pkt):
         seq = pkt.seq_num
-        # ignore packages outside window
-        if seq < self.next_expected or seq >= self.next_expected + self.window_size:
+        # if already received and processed, resend ACK
+        if seq < self.next_expected:
+            return Event(EVENT_TYPE_DATA, ack=seq)
+        # ignore packages too far in the future
+        if seq >= self.next_expected + self.window_size:
             return None
         # duplicado
         if seq in self.buffer:
