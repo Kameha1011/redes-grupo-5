@@ -5,6 +5,8 @@ from .constants import (
     STOP_AND_WAIT_PROTOCOL,
 )
 from .stop_and_wait import StopAndWait
+from lib.common.packet import Packet
+from lib.common.selective_repeat import SelectiveRepeat
 
 
 def protocol_id_from_choice(protocol_choice):
@@ -17,9 +19,17 @@ def protocol_id_from_choice(protocol_choice):
     raise ValueError(f"Protocolo desconocido: {protocol_choice}")
 
 
-def create_protocol(protocol_id, op_type, sock, socketLock=None, **kwargs):
+def create_protocol(protocol, op_type):
+    if protocol == SELECTIVE_REPEAT:
+        return SelectiveRepeat(op_type)
+    if protocol == STOP_AND_WAIT:
+        return StopAndWait(op_type)
+
+def protocol_factory_create(raw):
+    pkt = Packet.from_bytes(raw)
+    protocol_id = pkt.protocol
     if protocol_id == STOP_AND_WAIT_PROTOCOL:
-        return StopAndWait(op_type, sock, socketLock=socketLock, **kwargs)
+        return StopAndWait(pkt.op_type)
     if protocol_id == SELECTIVE_REPEAT_PROTOCOL:
-        raise NotImplementedError("Selective Repeat aun no esta implementado.")
+        return SelectiveRepeat(pkt.op_type)
     raise ValueError(f"ID de protocolo desconocido: {protocol_id}")

@@ -1,40 +1,75 @@
 from .protocol import Protocol
 from .packet import Packet
-from .constants import BUFFER_SIZE, TYPE_ACK, TYPE_CLOSE, TYPE_DATA, STOP_AND_WAIT_PROTOCOL
+from lib.common.constants import *
 from socket import socket, timeout
-import threading
-import queue
-
+from lib.common.exceptions import *
+from lib.common.event import Event
+import time
 class StopAndWait(Protocol):
 
     def __init__(
         self,
         op_type,
-        socket: socket,
-        socketLock: threading.Lock= None,
-        window_size=10,
+        window_size=1,
         chunk_size=1400,
-        file="",
-        ack_timeout=1.0,
-        max_retries=10,
     ):
-        super().__init__(op_type, STOP_AND_WAIT_PROTOCOL, socket, socketLock, window_size, chunk_size, file)
-        self.socketLock = socketLock
-        self.ack_timeout = ack_timeout
-        self.max_retries = max_retries
+        super().__init__(op_type)
+        self.ack_timeout = ACK_TIMEOUT
+        self.max_retries = MAX_RETRIES
+        self._pending = None
+        self._waiting_ack = False
+        self._send_time = None
+        self.protocol = STOP_AND_WAIT_PROTOCOL
+        self.window_size = 1
+
+
+    def push_payload(self, data):
+        # en SAW, mando de a un paquete
+        pkt = self.compose(TYPE_DATA, data)
+        self._pending = pkt
+        self.waiting_ack = True
+        self._send_time = time.time()
+        return [pkt.to_bytes()]
+    
+    # def check_timeouts(self):
+    #     now = time.time()
+    #     if self._send_time + TIMEOUT > now:
+    #         # retransmitir
+    #         pass
+
+    def compose(self, pkt_type, data):
+        #composes data packet and returns packet
+        pkt = Packet(pkt_type, self.op_type, self.protocol, data, self.seq_num)
+        self.seq_num += 1
+        return pkt
+    
+    def syn_ack_to_bytes(self):
+    # creates ACK packet
+        syn_ack = Packet(TYPE_SYN_ACK, self.op_type, self.protocol, b"", 0)
+        return syn_ack.to_bytes()
+    
+    def ack(self, seq):
+        # creates ACK packet
+        ack = Packet(TYPE_ACK, self.op_type, self.protocol, b"", seq)
+        return ack.to_bytes()
+
+    def fin_ack(self):
+        fin_ack = Packet(TYPE_CLOSE_ACK, self.op_type, self.protocol, b"", 0)
+        return fin_ack.to_bytes()
+
+    def fin(self):
+        fin = Packet(TYPE_CLOSE, self.op_type, self.protocol)
+        return fin.to_bytes()
+
+    def syn(self, filename, filesize):
+        data = filename.encode() + b'\0' + str(filesize).encode()
+        syn = Packet(TYPE_SYN, self.op_type, self.protocol, data, 0)
+        return syn.to_bytes()
     
     def send_data_packet(self, data: bytes, addr=None, clientDataQueue=None):
         pkt = Packet(TYPE_DATA, self.op_type, self.protocol, data, self.seq_num)
         self._send_and_wait_ack(pkt, addr=addr, clientDataQueue=clientDataQueue)
 
-    def receive_data_packet(self, pkt: Packet, addr=None):
-        payloads = []
-        if pkt.seq_num == self.next_expected:
-            payloads.append(pkt.data)
-            self.next_expected += 1
-        ack_seq = pkt.seq_num if payloads else (self.next_expected - 1)
-        self._send_ack(ack_seq, addr)
-        return payloads
 
     def handle_close(self, pkt: Packet, addr=None):
         self._send_ack(pkt.seq_num, addr)
@@ -44,43 +79,6 @@ class StopAndWait(Protocol):
         ack = self.ack(seq_num)
         self.safe_send(ack.to_bytes(), addr)
     
-    def _send_and_wait_ack(self, pkt: Packet, addr=None, clientDataQueue=None):
-        previous_timeout = self.socket.gettimeout()
-        try:
-            for _ in range(self.max_retries):
-                self.safe_send(pkt.to_bytes(), addr)
-                
-                self.socket.settimeout(self.ack_timeout)
-                try:
-                    if clientDataQueue is not None:
-                        # Para el Servidor con thread
-                        try:
-                            data = clientDataQueue.get(timeout=self.ack_timeout)
-                        except queue.Empty:
-                            raise timeout # para entrar al catch
-                    else:
-                        # Para el cliente
-                        self.socket.settimeout(self.ack_timeout)
-                        data = self.socket.recv(BUFFER_SIZE)
-
-                    if not Packet.compare_checksum(data):
-                        print(f"[!] Checksum de ACK inválido. Retransmitiendo seq: {pkt.seq_num}...")
-                        continue 
-                    
-                    ack_pkt = Packet.from_bytes(data)
-                    
-                    if ack_pkt.pkt_type == TYPE_ACK and ack_pkt.seq_num == pkt.seq_num:
-                        self.seq_num += 1
-                        return
-                
-                except (timeout, ValueError):
-                    print(f"[!] Reintentando envío de paquete {pkt.seq_num}...")
-                    continue
-                
-        finally:
-            if clientDataQueue is None:
-                self.socket.settimeout(previous_timeout)
-        raise TimeoutError("No se recibio ACK en Stop-and-Wait.")
 
     def end(self, addr=None, clientDataQueue=None):
         pkt = Packet(TYPE_CLOSE, self.op_type, self.protocol, b"", self.seq_num)
@@ -90,40 +88,77 @@ class StopAndWait(Protocol):
             # el unico que cierra la conexion es el cliente, el server mantiene siempre el socket activo para escuchar a cualq cliente
             self.socket.close()
 
-    def receive_file(self, file):
-        previous_timeout = self.socket.gettimeout()
-        self.socket.settimeout(float(self.ack_timeout)) 
-        pkt = None
-        consecutiveTimeouts = 0
-        maxTimeouts = self.max_retries
-        try:
-            while consecutiveTimeouts < maxTimeouts:
-                try:
-                    buf = self.socket.recv(BUFFER_SIZE)
+    
+            #################################
+            ##          HANDLERS           ##
+            #################################
+    def handle_handshake(self, data):
+        pkt = Packet.from_bytes(data)
+        if(pkt.pkt_type != TYPE_SYN):
+            self.logger.debug(
+                "ERROR: Tipo de paquete no es de tipo SYN."
+            )
+            raise HandshakeError()
+        return self.handle_packet(data)
 
-                    if not Packet.compare_checksum(buf):
-                        print(f"[!] Checksum inválido. Paquete corrupto, descartando...")
-                        continue
-                    
-                    pkt = Packet.from_bytes(buf)
-                    
-                    if pkt.pkt_type == TYPE_CLOSE:
-                        self.handle_close(pkt)
-                        return
-                        
-                    if pkt.pkt_type == TYPE_DATA:
-                        payloads = self.receive_data_packet(pkt)
-                        for data in payloads:
-                            file.write(data)
-                
-                except (timeout, ValueError):
-                    consecutiveTimeouts += 1
-                    if pkt:
-                        print(f"[!] Reintentando recibir tras paquete {pkt.seq_num}...")
-                    else:
-                        print("[!] Timeout: Esperando primer paquete de datos...")
-                    continue
-            
-            raise TimeoutError(f"Transferencia fallida: se alcanzó el máximo de reintentos ({self.max_retries})")
-        finally:
-            self.socket.settimeout(previous_timeout)
+    def handle_packet(self, raw):
+        try:
+            pkt = Packet.from_bytes(raw)
+        except ChecksumError as e:
+            self._handle_corrupt(e.seq)
+        if pkt.pkt_type == TYPE_SYN:
+            return self._handle_syn(pkt)
+        if pkt.pkt_type == TYPE_SYN_ACK:
+            return self._handle_syn_ack(pkt)
+        if pkt.pkt_type == TYPE_ACK:
+            return self._handle_ack(pkt)
+        if pkt.pkt_type == TYPE_NACK:
+            return self._handle_nack(pkt)
+        if pkt.pkt_type == TYPE_DATA:
+            return self._handle_data(pkt)
+        if pkt.pkt_type == TYPE_CLOSE:
+            return self._handle_fin(pkt)
+        if pkt.pkt_type == TYPE_CLOSE_ACK:
+            return self._handle_fin_ack(pkt)
+        
+        self.logger.debug("Tipo de paquete no identificado")
+        raise UnidentifiedPackageType()
+
+    def _handle_syn(self, pkt):
+        self.logger.debug("SYN HANDLER")
+        data = pkt.data.decode().split('\0')
+        filename = data[0]
+        filesize = int(data[1])
+        self.op_type = pkt.op_type
+        self.protocol = pkt.protocol
+        if filesize > MAX_FILE_SIZE:
+            self.logger.debug(
+                f"ERROR: Archivo muy grande. Máximo tamaño de archivo permitido {MAX_FILE_SIZE}")
+            raise FilesizeError     
+        self.logger.debug("RETURN SYN HANDLER")
+        return Event(EVENT_TYPE_HANDSHAKE, filename=filename, filesize=filesize, op_type=self.op_type)
+
+    def _handle_ack(self, pkt):
+        self.logger.debug(f"SEQ RECIBIDO: {pkt.seq_num}")
+        self.logger.debug(f"SEQ ESPERADO: {self.next_expected}")
+        if(pkt.seq_num == 0):
+            return Event(EVENT_TYPE_ACK_INIT, op_type = self.op_type, next=1)
+        if pkt.seq_num == self._pending.seq_num:
+            return Event(EVENT_TYPE_ACK, next=1)
+        
+    def _handle_fin_ack(self, pkt):
+        return Event(EVENT_TYPE_CLOSE_FIN)
+    
+    def _handle_data(self, pkt):
+        self.logger.debug(f"SEQ RECIBIDO: {pkt.seq_num}")
+        self.logger.debug(f"SEQ ESPERADO: {self.next_expected}")
+        if pkt.seq_num == self.next_expected:
+            self.next_expected += 1
+            return Event(EVENT_TYPE_DATA, ack=pkt.seq_num, data=[pkt.data])
+        return None
+    
+    def _handle_fin(self, pkt):
+        return Event(EVENT_TYPE_CLOSE)
+    
+    def _handle_syn_ack(self, pkt):
+        return Event(EVENT_TYPE_SYN_ACK)

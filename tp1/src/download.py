@@ -10,7 +10,6 @@ def main():
     Logger.configure(args.verbose, args.quiet, "CLIENT")
     
     client = Client(args.protocol, args.host, args.port, OP_TYPE_DOWNLOAD)
-    client.start(args.dst, args.name)
     client.download_file(args.dst, args.name)
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 from .packet import Packet
-from .factory import create_protocol, protocol_id_from_choice
+from .protocol_factory import create_protocol, protocol_id_from_choice
 from socket import timeout, socket
 from .constants import TYPE_SYN, BUFFER_SIZE, TYPE_SYN_ACK
 from socket import AF_INET, SOCK_DGRAM, socket

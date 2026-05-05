@@ -1,6 +1,8 @@
 import struct 
 import zlib
 from .constants import *
+from .exceptions import *
+from .logger import Logger
 
 class Packet:
 
@@ -21,6 +23,7 @@ class Packet:
 
     def __init__(self, pkt_type, op_type, protocol, data=b"", seq_num=0):
         self.pkt_type = pkt_type
+        self.logger = Logger.get_logger("PACKET")
         self.seq_num = seq_num
         self.data = data
         self.op_type = op_type
@@ -62,13 +65,12 @@ class Packet:
         return info
 
     @staticmethod
-    def compare_checksum(raw_packet):
+    def compare_checksum(raw_packet, expected):
         # get checksum from raw bytes
-        expected_checksum = struct.unpack_from("!I", raw_packet, 4)[0]
         # recompose packet with 0 in checksum field
         packet_to_validate = raw_packet[:4] + b'\x00\x00\x00\x00' + raw_packet[8:]
         real_checksum = zlib.crc32(packet_to_validate)
-        return expected_checksum == real_checksum
+        return expected == real_checksum
     
     @classmethod
     def parse_info_bytes(cls, info):
@@ -80,18 +82,33 @@ class Packet:
         payload_length = info & PAYLOAD_LENGTH_MASK
         return pkt_type, op_type, protocol, payload_length
     
-    @classmethod
-    def from_bytes(cls, raw_bytes):
-        if len(raw_bytes) < cls.HEADER_SIZE:
+    # @classmethod
+    # def from_bytes(cls, raw_bytes):
+        
+    #     if not cls.compare_checksum(raw_bytes):
+    #         raise ValueError("CRC mismatch: El paquete está corrupto")
+        
+    #     info, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
+    #     pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
+    #     payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + payload_length]
+        
+    #     pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
+    #     pkt.crc = crc
+    #     return pkt
+    
+
+    @classmethod 
+    def from_bytes(cls, raw):
+        if len(raw) < cls.HEADER_SIZE:
             raise ValueError("Paquete corto para procesar")
-        
-        if not cls.compare_checksum(raw_bytes):
-            raise ValueError("CRC mismatch: El paquete está corrupto")
-        
-        info, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
+        info, crc, seq = struct.unpack(
+            HEADER_FORMAT, raw[:cls.HEADER_SIZE])
         pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
-        payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + payload_length]
-        
-        pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
-        pkt.crc = crc
-        return pkt
+        if(not cls.compare_checksum(raw, crc)):
+            self.logger.debug(f"Paquete {seq} corrupto: invalid Checksum")
+            raise ChecksumError(seq)
+        return cls(pkt_type, 
+                   op_type, 
+                   protocol, 
+                   raw[cls.HEADER_SIZE: cls.HEADER_SIZE + payload_length],
+                   seq)

@@ -1,10 +1,10 @@
 import os
 from socket import *
 from ..common.constants import *
-from lib.common.file_handling import save_file
-from lib.common.handshake import Handshake
-from lib.common.factory import create_protocol
-from lib.common.packet import Packet
+from lib.common.protocol_factory import *
+from lib.common.exceptions import *
+from lib.common.file_handling import *
+from lib.common.logger import Logger
 import threading
 import queue
 
@@ -17,7 +17,7 @@ class Server:
         self.port = port
         self.socket = socket(AF_INET, SOCK_DGRAM)
         self.socket.bind((host, port))
-
+        self.logger = Logger.get_logger("SERVER")
         # multithreading
         self.clientDataQueues = {}
         self.clientDataQueueLock = threading.Lock() # Lock para clientDataQueues
@@ -34,120 +34,100 @@ class Server:
             try:
                 self.socket.settimeout(1.0)
                 data, addr = self.socket.recvfrom(BUFFER_SIZE)
-                
-                with self.clientDataQueueLock:
-                    if addr not in self.clientDataQueues:
-                        clientDataQueue = queue.Queue()
-                        self.clientDataQueues[addr] = clientDataQueue
-                        
-                        thread = threading.Thread(target=self.handle_client, args=(addr, clientDataQueue))
-                        thread.daemon = True
-                        thread.start()
-                
+                self._raise_thread(addr, data)
                 # agregar al cliente a la cola
-
                 self.clientDataQueues[addr].put(data)
-                
             except timeout:
                 continue
             except Exception as e:
                 print(f"[MAIN ERROR] {e}")
 
-    def handle_client(self, addr, clientDataQueue):
-        buffer = bytes()
+    
+    def _raise_thread(self, addr, data):
+        with self.clientDataQueueLock:
+            if addr not in self.clientDataQueues:
+                # crea un protocolo para el cliente
+                clientDataQueue = queue.Queue()
+                self.clientDataQueues[addr] = clientDataQueue
+                thread = threading.Thread(target=self.handle_clientt, args=(addr, clientDataQueue))
+                thread.daemon = True
+                thread.start()
+
+    def handle_clientt(self, addr, que):
+        event = None
+        initialized = False
         protocol = None
-        filename = None
-
+        file_handler = FileHandler("storage")
         while True:
-            try:
-                # obtiene el data del client encolado con un timeout para no dejar threads zombies
-                data = clientDataQueue.get(timeout=60)
-                pkt = Packet.from_bytes(data)
-                
-                if pkt.pkt_type == TYPE_SYN:
-                    try:
-                        protocol, filename = self.handle_handshake(pkt, addr) 
-                        Handshake.ack(self.socket, pkt, addr, self.socketLock)
-                        
-                        if pkt.op_type == OP_TYPE_DOWNLOAD:
-                            print(f"Iniciando envío de archivo a {addr}...")
-                            self.start_download_transfer(protocol, filename, addr, clientDataQueue)
-                            # cuando termina la transferencia podemos cerrar este hilo
-                            break 
-                            
-                    except Exception as e:
-                        print(f"[!] Error de Handshake con {addr}: {e}")
-                        break
-                
-                elif pkt.pkt_type == TYPE_DATA:
-                    if not protocol:
-                        print(f"Paquete {pkt.seq_num} ignorado (sin protocolo asociado).")
-                        continue
-                    
-                    payloads = protocol.receive_data_packet(pkt, addr)
-                    for payload in payloads:
-                        buffer += payload
-                    if payloads:
-                        print(f"Paquete de {addr} seq_num: {pkt.seq_num} recibido {len(pkt.data)} bytes. Siguiente esperado: {protocol.next_expected}")
-                    else:
-                        print(f"Paquete de {addr} seq_num: {pkt.seq_num} ignorado (duplicado o fuera de orden).")
-                
-                elif pkt.pkt_type == TYPE_CLOSE:
-                    if protocol:
-                        protocol.handle_close(pkt, addr)
-                    
-                    if buffer:
-                        save_file(self.storage_path, filename, buffer)
-                    
-                    print(f"Transferencia finalizada paquete {addr} via TYPE_CLOSE para el archivo: {filename}")
-                    break
+            data = que.get(timeout=60)
+            try:    
+                if not initialized:
+                    protocol = protocol_factory_create(data)
+                    event = protocol.handle_handshake(data)
+                    initialized = True
+                else: 
+                    event = protocol.handle_packet(data)
+            except HandshakeError:
+                self.logger.info(
+                    f"No pudo establecerse conexión con el cliente {addr[0]}:{addr[1]}"
+                )
+            if event:
+                self._handle_event(event, addr, protocol, file_handler)
+    # sacar al cliente de la col
 
-            except queue.Empty:
-                print(f"[-] Timeout: Cerrando thread cliente {addr} por inactividad")
-                break
-            except Exception as e:
-                print(f"Error thread con cliente {addr}: {e}")
-                break
-        
-        # sacar al cliente de la cola
+    def _handle_event(self, event, addr, protocol, file_handler):
+        if event.type == EVENT_TYPE_HANDSHAKE:
+            self._handle_handshake(addr, event, protocol, file_handler)
+        if event.type == EVENT_TYPE_DATA:
+            self._handle_data(event, addr, protocol, file_handler)
+        if event.type == EVENT_TYPE_ACK:
+            self._handle_ack(event, addr, protocol, file_handler)
+        if event.type == EVENT_TYPE_CLOSE:
+            self._handle_close(addr, event, protocol)
+        if event.type == EVENT_TYPE_ACK_INIT:
+            self._handle_init(addr, event, protocol, file_handler)
+        if event.type == EVENT_TYPE_CLOSE_FIN:
+            self.handle_close_fin(addr, file_handler)
+
+    def _handle_handshake(self, addr, event, protocol, file_handler):
+        self.socket.sendto(protocol.syn_ack_to_bytes(), addr)
+        file_handler.set_filename(event.filename)
+            
+    def _handle_init(self, addr, event, protocol, file_handler):
+        if(event.op_type == OP_TYPE_DOWNLOAD):
+            file_handler.open_for_read()
+            self._handle_ack(event, addr, protocol, file_handler)
+        else:
+            file_handler.create_file()
+        self.logger.info(
+            f"Conexión con {addr[0]}:{addr[1]} establecida"
+        )
+
+    def _handle_data(self, event, addr, protocol, file_handler):
+        # data es el chunk de bytes que tiene que ir al archivo
+        # llega seq_num = los sequence numbers que hay que hacer ack
+        # llega data = la data que hay que ubicar en el archivo
+        #self.logger.info(f"llegaron los sequence: {event.ack}")
+        self.socket.sendto(protocol.ack(event.ack), addr)
+        #self.logger.debug(f"Escribiendo: {event.data}")
+        file_handler.write(b"".join(event.data))
+
+    def _handle_ack(self, event, addr, protocol, file_handler):
+        if file_handler.eof():
+            fin = protocol.fin()
+            self.socket.sendto(fin, addr)
+            return
+        window_slide = event.next  
+        package_window = file_handler.read(window_slide*PAYLOAD_SIZE)
+        for i in protocol.push_payload(package_window):
+            self.socket.sendto(i, addr)
+
+    def _handle_close(self, addr, event, protocol):
+        fin_ack = protocol.fin_ack()
+        self.socket.sendto(fin_ack, addr)
+
+    def handle_close_fin(self, addr, file_handler):
         with self.clientDataQueueLock:
             if addr in self.clientDataQueues:
+                file_handler.close()
                 del self.clientDataQueues[addr]
-
-    def handle_handshake(self, packet: Packet, address: str):
-        print(f"Handshake recibido SYN de {address}")
-        decodedData = packet.data.decode().split('\0')
-        filename = decodedData[0]
-
-        if packet.op_type == OP_TYPE_DOWNLOAD:
-            print(f"Cliente solicita descargar: {filename}")
-            fullPath = os.path.join(self.storage_path, filename)
-            if not os.path.exists(fullPath):
-                raise FileNotFoundError(f"El archivo {filename} no existe")
-        else:
-            filesize = int(decodedData[1])
-            print(f"Cliente solicita subir: {filename} ({filesize} bytes)")
-            if filesize > MAX_FILE_SIZE:
-                raise BufferError(f"Solicitud rechazada para el cliente {address}: el archivo supera el limite: ({filesize} bytes)")
-        
-        protocol = create_protocol(packet.protocol, packet.op_type, self.socket, self.socketLock)
-
-        return protocol, filename
-    
-    def start_download_transfer(self, protocol, filename, addr, clientDataQueue):
-        fullPath = os.path.join(self.storage_path, filename)
-        
-        if not os.path.exists(fullPath):
-            print(f"Archivo {filename} no encontrado en storage.")
-            return
-
-        with open(fullPath, 'rb') as f:
-            while True:
-                chunk = f.read(protocol.chunk_size)
-                if not chunk:
-                    break
-                
-                protocol.send_data_packet(chunk, addr, clientDataQueue)
-
-        protocol.end(addr, clientDataQueue)
-        print(f"Envío de {filename} a {addr} finalizado con éxito.")

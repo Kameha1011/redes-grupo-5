@@ -1,80 +1,123 @@
-from lib.common.file_handling import get_file
-from ..common.handshake import Handshake
+from socket import *
+from lib.common.file_handling import *
+from lib.common.protocol_factory import *
+from ..common.packet import Packet
 from ..common.constants import *
-from lib.common.packet import Packet
+from lib.common.logger import Logger
+import time
 import os
 
 class Client:
-    def __init__(self, protocol_choice: str, host: str, port: int, op_type: str):
-        self.protocol_choice = protocol_choice
-        self.protocol = None
+    
+    def __init__(self, 
+                 protocol, 
+                 server_host: str, 
+                 server_port: int,
+                 op_type):
+        self.logger = Logger.get_logger("CLIENT")
+        self.server_addr = (server_host, server_port)
+        self.start_socket(self.server_addr)
+        self.protocol = create_protocol(protocol, op_type)
+        self.file_handler = FileHandler()
         self.op_type = op_type
-        self.host = host
-        self.port = port
+    
+    def start_socket(self, server_addr):
+        self.socket = socket(AF_INET, SOCK_DGRAM)
+        self.socket.connect(self.server_addr)
+        self.logger.info(
+            f"Cliente listo. Puerto: {self.socket.getsockname()[1]}")
+    
+    def send_message(self, message: bytes):
+        self.socket.send(message)
+    
+    def wait_response(self) -> bytes:
+        while True:
+            data, addr = self.socket.recvfrom(BUFFER_SIZE)
+            return addr, self.protocol.handle_packet(data)
 
-    def start(self, file_path: str, file_name: str):
-        if self.op_type == OP_TYPE_UPLOAD:
-            fullPath = os.path.join(file_path, file_name)
-            fileSize = os.path.getsize(fullPath)
-        else:
-            fileSize = 0
-        protocol = Handshake.start(self.host, self.port, file_name, fileSize, file_path, self.protocol_choice, self.op_type)
-        self.set_protocol(protocol)
+    def upload_file(self, path, save_name):
+        init = time.time()
+        self.file_handler.open_for_read(path)
+        filesize = self.file_handler.size()
+        # handshake
+        syn = self.protocol.syn(save_name, filesize)
+        self.send_message(syn)
+        addr, event = self.wait_response()
+        if event:
+            self.handle_event(event, addr, self.protocol)
+        # fin handshake
+        while not self.file_handler.is_closed():
+            data, addr = self.socket.recvfrom(BUFFER_SIZE)
+            event = self.protocol.handle_packet(data)
+            self.handle_event(event, addr, self.protocol)
+        fin = time.time()
+        elapsed = fin - init
+        self.logger.info(f"Finished in: {elapsed}")
 
-    def set_protocol(self, protocol):
-        if protocol is None:
-            raise NotImplementedError("Protocolo no implementado o invalido.")
-        self.protocol = protocol
-
-    def upload_file(self, src_filepath: str, name: str):
-        if self.protocol == None:
-            raise NotImplementedError("Debes iniciar el handshake primero")
-
-        fullPath = os.path.join(src_filepath, name)
-        fileSize = os.path.getsize(fullPath)
-        chunkSize = self.protocol.get_chunk_size()
-        bytesSent = 0
-        try:
-            # open file modo 'rb' (read binary)
-            with open(fullPath, 'rb') as f:
-                print(f"Subiendo {name} ({fileSize} bytes)...")
-                
-                while bytesSent < fileSize:
-                    chunk = f.read(chunkSize)
-                    if not chunk:
-                        break
-                    
-                    self.protocol.send_data_packet(chunk)
-                    bytesSent += len(chunk)
-            
-            self.protocol.end()
-            print(f"Subida {name} finalizada con éxito!")
-            
-        except TimeoutError as e:
-            print(f"TIMEOUT: {e}")
-            
-        except Exception as e:
-            print(f"Error: {e}")
 
     def download_file(self, dst_path: str, name: str):
-        if self.protocol is None:
-            raise NotImplementedError("Debes iniciar el handshake primero")
+        init = time.time()
+        self.file_handler.open_for_write(dst_path)
+        syn = self.protocol.syn(name, "1000")
+        self.send_message(syn)
+        addr, event = self.wait_response()
+        if event:
+            self.handle_event(event, addr, self.protocol)
+        # fin handshake
+        while not self.file_handler.is_closed():
+            data, addr = self.socket.recvfrom(BUFFER_SIZE)
+            event = self.protocol.handle_packet(data)
+            self.handle_event(event, addr, self.protocol)
+        fin = time.time()
+        elapsed = fin - init
+        self.logger.info(f"Finished in: {elapsed}")
 
-        if not os.path.exists(dst_path):
-            os.makedirs(dst_path)
-        
-        fullPath = os.path.join(dst_path, name)
+    def handle_event(self, event, addr, protocol):
+        if event.type == EVENT_TYPE_SYN_ACK:
+            self.handle_syn_ack(event, addr, protocol)
+        if event.type == EVENT_TYPE_DATA:
+            self.handle_data(event, addr, protocol)
+        if event.type == EVENT_TYPE_ACK:
+            self.handle_ack(event.next, protocol)
+        if event.type == EVENT_TYPE_CLOSE:
+            self.handle_close(protocol)
+        if event.type == EVENT_TYPE_ACK_INIT:
+            pass
+        if event.type == EVENT_TYPE_CLOSE_FIN:
+            self.handle_close_fin()
+            
+    def handle_syn_ack(self, event, addr, protocol):
+        self.logger.debug(f"SUCCESS: Conexion establecida con {addr[0]}:{addr[1]}")
+        ack = self.protocol.ack(0)
+        self.socket.send(ack)
+        if self.op_type == OP_TYPE_UPLOAD:
+            self.handle_ack(protocol.window_size, protocol)
+            
+    def handle_data(self, event, addr, protocol):
+        #self.logger.debug(f"Escribiendo: {event.data}")}
+        self.send_message(protocol.ack(event.ack))
+        self.file_handler.write(b"".join(event.data))
 
-        try:
-            # open file modo 'wb' (write binary)
-            with open(fullPath, 'wb') as file:
-                print(f"Descargando {name} en {dst_path}...")
-                self.protocol.receive_file(file)
-                
-            print(f"Descarga {name} finalizada con éxito!")
-            
-        except TimeoutError as e:
-            print(f"TIMEOUT: {e}")
-            
-        except Exception as e:
-            print(f"Error: {e}")
+    def close(self):
+        self.file_handler.close()
+        self.logger.debug("Archivo cerrado")
+
+    def handle_handshake():
+        pass
+
+    def handle_ack(self, advance, protocol):
+        if self.file_handler.eof():
+            fin = protocol.fin()
+            self.socket.send(fin)
+            return
+        package_window = self.file_handler.read(advance*PAYLOAD_SIZE)
+        for i in protocol.push_payload(package_window):
+            self.socket.send(i)
+
+    def handle_close(self, protocol):
+        self.file_handler.close()
+        fin_ack = protocol.fin_ack()
+        self.socket.send(fin_ack)
+
+    def handle_close_fin(self):
+        self.file_handler.close()
