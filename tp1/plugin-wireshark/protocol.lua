@@ -38,7 +38,7 @@ Tipo operación:
 local infoField = ProtoField.uint32('infoField', 'Principal', base.HEX)
 
 local packetTypeSubfield = ProtoField.uint32('packetTypeSubfield', 'Tipo de Paquete', base.DEC, {
-    [0]='SYN', [1]='SYN-ACK', [2]='ACK', [3]='DATA', [4]='CLOSE', [5]='NACK'
+    [0]='SYN', [1]='SYN-ACK', [2]='ACK', [3]='DATA', [4]='CLOSE', [5]='NACK', [6]='CLOSE_ACK'
 }, 0xE0000000)
 
 local operationTypeSubfield = ProtoField.uint32('operationTypeSubfield', 'Tipo de Operacion', base.DEC, {
@@ -88,7 +88,7 @@ function protocol.dissector(buffer, pinfo, tree)
     subtree:add(seqnumField, buffer(8,4))
 
     local type_val = buffer(0,4):uint() >> 29
-    local types = {[0]='SYN', [1]='SYN-ACK', [2]='ACK', [3]='DATA', [4]='CLOSE', [5]='NACK'}
+    local types = {[0]='SYN', [1]='SYN-ACK', [2]='ACK', [3]='DATA', [4]='CLOSE', [5]='NACK', [6]='CLOSE_ACK'}
     local type_name = types[type_val] or "Unknown"
     local seq_val = buffer(8,4):uint()
 

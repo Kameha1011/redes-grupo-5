@@ -18,7 +18,7 @@ PAYLOAD_SIZE = 1400 # bytes
 HEADER_SIZE = 12 # bytes
 WINDOW_SIZE = 30
 
-# PAYLOAD_SIZE (1400) + HEADER_SIZE (12) + Margen de seguridad = 2048
+# MTU Estándar (1500) / PAYLOAD_SIZE (1400) + HEADER_SIZE (12) + Header IP (20) + Header UDP (8) + Header Ethernet (14) + Margen de seguridad = 2048
 BUFFER_SIZE = 2048
 
 OP_TYPE_UPLOAD = 1
