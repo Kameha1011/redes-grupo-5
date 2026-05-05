@@ -93,7 +93,7 @@ class Server:
         if event.type == EVENT_TYPE_ACK:
             self._handle_ack(event, addr, protocol, file_handler)
         if event.type == EVENT_TYPE_CLOSE:
-            self._handle_close(addr, event, protocol)
+            self._handle_close(addr, event, protocol, file_handler)
         if event.type == EVENT_TYPE_ACK_INIT:
             self._handle_init(addr, event, protocol, file_handler)
         if event.type == EVENT_TYPE_CLOSE_FIN:
@@ -120,21 +120,27 @@ class Server:
         #self.logger.info(f"llegaron los sequence: {event.ack}")
         self.socket.sendto(protocol.ack(event.ack), addr)
         #self.logger.debug(f"Escribiendo: {event.data}")
+        self.logger.debug(f"DATA: {len(event.data[0])}")
+        
         file_handler.write(b"".join(event.data))
 
     def _handle_ack(self, event, addr, protocol, file_handler):
-        if file_handler.eof():
-            fin = protocol.fin()
-            self.socket.sendto(fin, addr)
-            return
         window_slide = event.next  
         package_window = file_handler.read(window_slide*PAYLOAD_SIZE)
         for i in protocol.push_payload(package_window):
             self.socket.sendto(i, addr)
 
-    def _handle_close(self, addr, event, protocol):
+        if file_handler.eof() and not protocol.window:
+            self.logger.debug("FIN")
+            fin = protocol.fin()
+            self.socket.sendto(fin, addr)
+
+    def _handle_close(self, addr, event, protocol, file_handler):
+        self.logger.debug("HANDLE CLOSE")
         fin_ack = protocol.fin_ack()
         self.socket.sendto(fin_ack, addr)
+        file_handler.close()
+        
 
     def handle_close_fin(self, addr, file_handler):
         with self.clientDataQueueLock:

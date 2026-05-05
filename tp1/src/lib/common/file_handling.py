@@ -55,10 +55,13 @@ class FileHandler:
 
     def eof(self) -> bool:
         if not self.file:
-            return True
-        pos = self.file.tell()
-        end = self.size()
-        return pos >= end
+            raise RuntimeError("File not opened")
+
+        # solo válido si está en modo lectura
+        if "r" not in self.file.mode:
+            raise RuntimeError("EOF check only valid in read mode")
+
+        return self.file.tell() >= self.size()
     
     def is_closed(self) -> bool:
         if not self.file:

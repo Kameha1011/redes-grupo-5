@@ -29,8 +29,10 @@ class SelectiveRepeat():
             chunk = data[i: i + self.chunk_size]
             pkt = self.compose(TYPE_DATA, chunk)
             self.window[pkt.seq_num] = pkt
+            self.logger.debug(f"PAQUETE: {pkt.seq_num}")
             #self.logger.debug(f"VENTANA: {self.window.keys()}")
             pkts.append(pkt.to_bytes())
+        self.logger.debug(f"PKTS LEN: {len(pkts)}")
         return pkts
     
     def check_timeouts(self, timeout):
@@ -106,7 +108,6 @@ class SelectiveRepeat():
         raise UnidentifiedPackageType()
 
     def _handle_syn(self, pkt):
-        self.logger.debug("SYN HANDLER")
         data = pkt.data.decode().split('\0')
         filename = data[0]
         filesize = int(data[1])

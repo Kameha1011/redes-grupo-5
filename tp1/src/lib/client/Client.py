@@ -106,18 +106,28 @@ class Client:
         pass
 
     def handle_ack(self, advance, protocol):
-        if self.file_handler.eof():
-            fin = protocol.fin()
-            self.socket.send(fin)
-            return
+        #self.logger.debug(f"ADVANCE: {advance}")
+        #self.logger.debug(f"puntero: {self.file_handler.file.tell()}")
+        #self.logger.debug(f"tamaño: {self.file_handler.size()}")
+        #self.logger.debug(f"VENTANA: {protocol.window}")
         package_window = self.file_handler.read(advance*PAYLOAD_SIZE)
         for i in protocol.push_payload(package_window):
-            self.socket.send(i)
+                self.socket.send(i) 
+        #self.logger.debug(f"PACKAGE: {len(package_window)}")
+        if not package_window and not protocol.window:
+            self.logger.debug("FIN")
+            fin = protocol.fin()
+            self.socket.send(fin)
+        # self.logger.debug(f"PACKAGE: {len(package_window)}")
+        #if self.file_handler.eof() and not protocol.window:
+
 
     def handle_close(self, protocol):
+        self.logger.debug("cLose")
         self.file_handler.close()
         fin_ack = protocol.fin_ack()
         self.socket.send(fin_ack)
 
     def handle_close_fin(self):
+        self.logger.debug("FIN:ACK")
         self.file_handler.close()
