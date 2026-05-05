@@ -33,7 +33,8 @@ class StopAndWait(Protocol):
     
     def get_timedouts(self):
         now = time.time()
-        if self._pending and self._send_time + ACK_TIMEOUT > now:
+        if self._pending and now > self._send_time + ACK_TIMEOUT:
+            self._send_time = time.time()  # resetear timer
             return [self._pending.to_bytes()]
         return []
 
@@ -137,13 +138,15 @@ class StopAndWait(Protocol):
             raise FilesizeError     
         self.logger.debug("RETURN SYN HANDLER")
         return Event(EVENT_TYPE_HANDSHAKE, filename=filename, filesize=filesize, op_type=self.op_type)
-
+        
     def _handle_ack(self, pkt):
         self.logger.debug(f"SEQ RECIBIDO: {pkt.seq_num}")
         self.logger.debug(f"SEQ ESPERADO: {self.next_expected}")
-        if(pkt.seq_num == 0):
-            return Event(EVENT_TYPE_ACK_INIT, op_type = self.op_type, next=1)
-        if pkt.seq_num == self._pending.seq_num:
+        if pkt.seq_num == 0:
+            return Event(EVENT_TYPE_ACK_INIT, op_type=self.op_type, next=1)
+        if self._pending and pkt.seq_num == self._pending.seq_num:
+            self._pending = None
+            self._waiting_ack = False
             return Event(EVENT_TYPE_ACK, next=1)
         
     def _handle_fin_ack(self, pkt):

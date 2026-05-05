@@ -25,9 +25,10 @@ class Client:
     def start_socket(self, server_addr):
         self.socket = socket(AF_INET, SOCK_DGRAM)
         self.socket.connect(self.server_addr)
+        self.socket.settimeout(ACK_TIMEOUT)
         self.logger.info(
             f"Cliente listo. Puerto: {self.socket.getsockname()[1]}")
-    
+        
     def send_message(self, message: bytes):
         self.socket.send(message)
     
@@ -48,9 +49,14 @@ class Client:
             self.handle_event(event, addr, self.protocol)
         # fin handshake
         while not self.file_handler.is_closed():
-            data, addr = self.socket.recvfrom(BUFFER_SIZE)
-            event = self.protocol.handle_packet(data)
-            self.handle_event(event, addr, self.protocol)
+            try:
+                data, addr = self.socket.recvfrom(BUFFER_SIZE)
+                event = self.protocol.handle_packet(data)
+                self.handle_event(event, addr, self.protocol)
+            except timeout:
+                # no llegó nada, retransmitir el paquete pendiente
+                for b in self.protocol.get_timedouts():
+                    self.socket.send(b)
         fin = time.time()
         elapsed = fin - init
         self.logger.info(f"Finished in: {elapsed}")
@@ -66,9 +72,14 @@ class Client:
             self.handle_event(event, addr, self.protocol)
         # fin handshake
         while not self.file_handler.is_closed():
-            data, addr = self.socket.recvfrom(BUFFER_SIZE)
-            event = self.protocol.handle_packet(data)
-            self.handle_event(event, addr, self.protocol)
+            try:
+                data, addr = self.socket.recvfrom(BUFFER_SIZE)
+                event = self.protocol.handle_packet(data)
+                self.handle_event(event, addr, self.protocol)
+            except timeout:
+                # no llegó nada, retransmitir el paquete pendiente
+                for b in self.protocol.get_timedouts():
+                    self.socket.send(b)
         fin = time.time()
         elapsed = fin - init
         self.logger.info(f"Finished in: {elapsed}")
