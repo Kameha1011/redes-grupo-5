@@ -4,10 +4,11 @@ from .constants import (
     STOP_AND_WAIT,
     STOP_AND_WAIT_PROTOCOL,
 )
+
 from .stop_and_wait import StopAndWait
-from lib.common.packet import Packet
 from lib.common.selective_repeat import SelectiveRepeat
 
+from lib.common.packet import Packet
 
 def protocol_id_from_choice(protocol_choice):
     if isinstance(protocol_choice, int):
@@ -18,12 +19,13 @@ def protocol_id_from_choice(protocol_choice):
         return SELECTIVE_REPEAT_PROTOCOL
     raise ValueError(f"Protocolo desconocido: {protocol_choice}")
 
-
 def create_protocol(protocol, op_type):
-    if protocol == SELECTIVE_REPEAT:
-        return SelectiveRepeat(op_type)
     if protocol == STOP_AND_WAIT:
         return StopAndWait(op_type)
+    if protocol == SELECTIVE_REPEAT:
+        return SelectiveRepeat(op_type)
+    raise ValueError(f"Protocolo desconocido: {protocol}")
+
 
 def protocol_factory_create(raw):
     pkt = Packet.from_bytes(raw)
