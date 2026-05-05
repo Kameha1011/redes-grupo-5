@@ -6,18 +6,18 @@ from .logger import Logger
 
 class Packet:
 
-    # header format: 
-    #   | INFO = package type (3bits) | op (1bit) | prt (1bit) | payload lenght (27bits)   |
-    #   |                     Checksum CRC32 (4bytes)                               |
-    #   |                       SEQ_NUM (4bytes)                                 |
+    # Header format: 
+    # | INFO = Package Type (3bits) | Op (1bit) | Prt (1bit) | Payload Length (27bits) |
+    # |                             Checksum CRC32 (4bytes)                            |
+    # |                                SEQ_NUM (4bytes)                                |
 
 
-# TYPE_SYN = 0
-# TYPE_SYN_ACK = 1
-# TYPE_ACK = 2
-# TYPE_DATA = 3
-# TYPE_CLOSE = 4
-# TYPE_NACK = 5
+    # TYPE_SYN = 0
+    # TYPE_SYN_ACK = 1
+    # TYPE_ACK = 2
+    # TYPE_DATA = 3
+    # TYPE_CLOSE = 4
+    # TYPE_NACK = 5
 
     HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
@@ -31,8 +31,10 @@ class Packet:
         self.crc = 0
         self.data_length = len(self.data)
 
+    # From Packet to bytes
+
     def to_bytes(self):
-        # creates header and concatenates with data
+        # Creates header and concatenates with data
         info = self._compose_info_field()
 
         if isinstance(self.data, str):
@@ -63,39 +65,8 @@ class Packet:
         info |= (self.data_length & payload_mask)
         
         return info
-
-    @staticmethod
-    def compare_checksum(raw_packet, expected):
-        # get checksum from raw bytes
-        # recompose packet with 0 in checksum field
-        packet_to_validate = raw_packet[:4] + b'\x00\x00\x00\x00' + raw_packet[8:]
-        real_checksum = zlib.crc32(packet_to_validate)
-        return expected == real_checksum
     
-    @classmethod
-    def parse_info_bytes(cls, info):
-        # esta operación deberia ir en Packet
-        # bitwise operations
-        pkt_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE)) & PKT_TYPE_MASK
-        op_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE)) & OP_TYPE_MASK
-        protocol = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE)) & PROTOCOL_MASK
-        payload_length = info & PAYLOAD_LENGTH_MASK
-        return pkt_type, op_type, protocol, payload_length
-    
-    # @classmethod
-    # def from_bytes(cls, raw_bytes):
-        
-    #     if not cls.compare_checksum(raw_bytes):
-    #         raise ValueError("CRC mismatch: El paquete está corrupto")
-        
-    #     info, crc, seq_num = struct.unpack(HEADER_FORMAT, raw_bytes[:cls.HEADER_SIZE])
-    #     pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
-    #     payload = raw_bytes[cls.HEADER_SIZE : cls.HEADER_SIZE + payload_length]
-        
-    #     pkt = cls(pkt_type, op_type, protocol, payload, seq_num)
-    #     pkt.crc = crc
-    #     return pkt
-    
+    # From bytes to Packet
 
     @classmethod 
     def from_bytes(cls, raw):
@@ -104,11 +75,29 @@ class Packet:
         info, crc, seq = struct.unpack(
             HEADER_FORMAT, raw[:cls.HEADER_SIZE])
         pkt_type, op_type, protocol, payload_length = cls.parse_info_bytes(info)
-        if(not cls.compare_checksum(raw, crc)):
-            self.logger.debug(f"Paquete {seq} corrupto: invalid Checksum")
+        if not cls.compare_checksum(raw, crc):
+            Logger.get_logger("PACKET").debug(f"Paquete {seq} corrupto: invalid Checksum")
             raise ChecksumError(seq)
         return cls(pkt_type, 
                    op_type, 
                    protocol, 
                    raw[cls.HEADER_SIZE: cls.HEADER_SIZE + payload_length],
                    seq)
+    
+    @classmethod
+    def parse_info_bytes(cls, info):
+        # Bitwise operations
+        pkt_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE)) & PKT_TYPE_MASK
+        op_type = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE)) & OP_TYPE_MASK
+        protocol = (info >> (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE)) & PROTOCOL_MASK
+        payload_length = info & PAYLOAD_LENGTH_MASK
+        return pkt_type, op_type, protocol, payload_length
+    
+    @staticmethod
+    def compare_checksum(raw_packet, expected):
+        # Get checksum from raw bytes
+        # Recompose packet with 0 in checksum field
+        packet_to_validate = raw_packet[:4] + b'\x00\x00\x00\x00' + raw_packet[8:]
+        real_checksum = zlib.crc32(packet_to_validate)
+        return expected == real_checksum
+
