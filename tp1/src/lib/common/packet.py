@@ -60,9 +60,7 @@ class Packet:
         # Protocol: bit 27
         info |= (self.protocol << (INFO_FIELD_SIZE - PKT_TYPE_FIELD_SIZE - OP_TYPE_FIELD_SIZE - PROTOCOL_FIELD_SIZE))
         
-        payload_mask = (1 << PAYLOAD_LENGTH_FIELD_SIZE) - 1
-        
-        info |= (self.data_length & payload_mask)
+        info |= (self.data_length & PAYLOAD_LENGTH_MASK)
         
         return info
     
