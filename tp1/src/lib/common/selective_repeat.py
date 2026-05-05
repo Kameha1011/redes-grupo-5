@@ -29,8 +29,8 @@ class SelectiveRepeat():
         for i in range(0, len(data), self.chunk_size):
             chunk = data[i: i + self.chunk_size]
             pkt = self.compose(TYPE_DATA, chunk)
-            self.window[pkt.seq_num] = {["pkt"] = pkt, 
-                                        ["sent_time"] = time.time()}
+            self.window[pkt.seq_num] = {"pkt" : pkt, 
+                                        "time":time.time()}
             #self.logger.debug(f"VENTANA: {self.window.keys()}")
             pkts.append(pkt.to_bytes())
         return pkts

@@ -79,7 +79,7 @@ class Client:
         if event.type == EVENT_TYPE_DATA:
             self.handle_data(event, addr, protocol)
         if event.type == EVENT_TYPE_ACK:
-            self.handle_ack(event.next, protocol)
+            self.handle_ack(event, protocol)
         if event.type == EVENT_TYPE_CLOSE:
             self.handle_close(protocol)
         if event.type == EVENT_TYPE_ACK_INIT:
@@ -93,7 +93,7 @@ class Client:
         self.socket.send(ack)
         if self.op_type == OP_TYPE_UPLOAD:
             event = Event(EVENT_TYPE_ACK, next=protocol.window_size)
-            self.handle_event(event, protocol)
+            self.handle_event(event, addr, protocol)
             
     def handle_data(self, event, addr, protocol):
         #self.logger.debug(f"Escribiendo: {event.data}")}
