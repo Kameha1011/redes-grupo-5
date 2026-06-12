@@ -55,6 +55,25 @@ class ProtoRouter(object):
             "timestamp": time.time(),
         }
         log_color(GREEN, f"Entrada aprendida: {ip_addr} -> {mac_addr} en puerto {port}")
+        self.dump_arp_table()
+
+    def get_mac(self, ip_addr):
+        if ip_addr in self.arp_table:
+            return self.arp_table[ip_addr]["mac"]
+        return None
+
+    def get_port(self, ip_addr):
+        if ip_addr in self.arp_table:
+            return self.arp_table[ip_addr]["port"]
+        return None
+
+    def dump_arp_table(self):
+        log_color(CYAN, "--- ARP TABLE ---")
+        log_color(CYAN, "IP\t\tMAC\t\t\tPORT\tAGE")
+        for ip, data in self.arp_table.items():
+            age = time.time() - data["timestamp"]
+            log_color(CYAN, f"{ip}\t{data['mac']}\t{data['port']}\t{age:.2f}s")
+        log_color(CYAN, "-----------------")
 
     def _send_arp_reply(self, target_ip, target_mac, target_port, source_ip, source_mac):
         reply = arp()
