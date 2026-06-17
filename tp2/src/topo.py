@@ -30,6 +30,8 @@ from mininet.log import setLogLevel
 
 class NATTopo(Topo):
     def build(self):
+        s1 = self.addSwitch('s1')
+
         h1 = self.addHost(
             "h1",
             ip="200.0.0.1/24",
