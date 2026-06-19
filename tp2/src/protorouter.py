@@ -29,14 +29,26 @@ PUBLIC_MAC = EthAddr("00:00:00:aa:aa:aa")   # MAC del router hacia la red públi
 PRIVATE_MAC = EthAddr("00:00:00:bb:bb:bb")  # MAC del router hacia la red privada
 PUBLIC_PORT = 1                             # Puerto del switch conectado a la red pública
 
-H1_MAC = EthAddr("00:00:00:00:00:01")       # MAC del host externo (TODO: resolver mediante ARP)
 PAT_PORT_MIN = 1024
 PAT_PORT_MAX = 65535 # Numero magico de Hamelin
 
 class ArpHandler():
-    
     def __init__(self):
         self.arp_table = {}
+        self.waiting_queue = {}
+
+    def enqueue_packet(self, ip_addr, event):
+        if ip_addr not in self.waiting_queue:
+            self.waiting_queue[ip_addr] = []
+        self.waiting_queue[ip_addr].append(event)
+        log_color(YELLOW, f"Paquete hacia {ip_addr} encolado (esperando ARP). Total encolados: {len(self.waiting_queue[ip_addr])}")
+
+    def dequeue_packets(self, ip_addr):
+        if ip_addr in self.waiting_queue:
+            packets = self.waiting_queue.pop(ip_addr)
+            log_color(GREEN, f"Desencolando {len(packets)} paquetes hacia {ip_addr}")
+            return packets
+        return []
 
     def _dump_arp_table(self):
         log_color(CYAN, "--- ARP TABLE ---")
@@ -201,6 +213,7 @@ class ProtoRouter(object):
 
     def _send_arp_request(self, target_ip, out_port, source_ip, source_mac):
         msg = self.arp_handler.create_arp_request(target_ip, out_port, source_ip, source_mac)
+        log_color(CYAN, f"ARP Request generado por el controlador: {source_ip} ({source_mac}) pregunta por {target_ip}")
         self.connection.send(msg)
 
     def handle_arp(self, event):
@@ -224,6 +237,11 @@ class ProtoRouter(object):
             log_color(YELLOW, f"ARP recibido con opcode no soportado: {arp_pkt.opcode}")
 
         self.arp_handler.learn_arp_entry(sender_ip, sender_mac, in_port)
+
+        # Desencolar y procesar paquetes que estaban esperando esta MAC
+        events_to_resume = self.arp_handler.dequeue_packets(sender_ip)
+        for ev in events_to_resume:
+            self._handle_PacketIn(ev)
 
         if arp_pkt.opcode != arp.REQUEST:
             return
@@ -250,27 +268,34 @@ class ProtoRouter(object):
             YELLOW, f"RECIBIDO: {ip_pkt.srcip} → {ip_pkt.dstip} | "
             f"MAC: {packet.src} → {packet.dst} | In Port: {in_port}")
 
-
-        protocol, src_port, dst_port = self._get_transport_fields(ip_pkt)
-
-        if (
-            protocol in ("TCP", "UDP")
-            and ip_pkt.srcip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK)
-            and not ip_pkt.dstip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK)
-        ):
-            pat_entry = self.nat_handler.create_pat_entry(protocol=protocol,
-                private_ip=ip_pkt.srcip,
-                private_port=src_port,
-                public_ip=PUBLIC_IP,
-                destination_ip=ip_pkt.dstip,)
+        # LO COMENTO POR AHORA (QUIERO TERMINAR DE RESOLVER ARP POR COMPLETO, Y LUEGO PASAR A NAT)
+        #
+        # protocol, src_port, dst_port = self._get_transport_fields(ip_pkt)
+        #
+        # if (
+        #     protocol in ("TCP", "UDP")
+        #     and ip_pkt.srcip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK)
+        #     and not ip_pkt.dstip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK)
+        # ):
+        #     pat_entry = self.nat_handler.create_pat_entry(protocol=protocol,
+        #         private_ip=ip_pkt.srcip,
+        #         private_port=src_port,
+        #         public_ip=PUBLIC_IP,
+        #         destination_ip=ip_pkt.dstip,)
             
-            if not self.arp_handler.get_mac(packet.dst):
-                self._send_arp_request(ip_pkt.dstip, PUBLIC_PORT, PUBLIC_IP, PUBLIC_MAC)
-            return
+        #     if not self.arp_handler.get_mac(packet.dst):
+        #         self._send_arp_request(ip_pkt.dstip, PUBLIC_PORT, PUBLIC_IP, PUBLIC_MAC)
+        #     return
 
         if ip_pkt.srcip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK):
 
             log_color(GREEN, f"MATCH: {ip_pkt.srcip} pertenece a la red privada {PRIVATE_SUBNET}/{PRIVATE_MASK}")
+
+            target_mac = self.arp_handler.get_mac(ip_pkt.dstip)
+            if not target_mac:
+                self.arp_handler.enqueue_packet(ip_pkt.dstip, event)
+                self._send_arp_request(target_ip=ip_pkt.dstip, out_port=PUBLIC_PORT, source_ip=PUBLIC_IP, source_mac=PUBLIC_MAC)
+                return
 
             # Instalar Flujo Saliente
             fm = of.ofp_flow_mod()
@@ -283,7 +308,7 @@ class ProtoRouter(object):
 
             # Acción (Saliente)
             fm.actions.append(of.ofp_action_dl_addr.set_src(PUBLIC_MAC))
-            fm.actions.append(of.ofp_action_dl_addr.set_dst(H1_MAC))
+            fm.actions.append(of.ofp_action_dl_addr.set_dst(target_mac))
             fm.actions.append(of.ofp_action_output(port=PUBLIC_PORT))
             self.connection.send(fm)
 
@@ -305,11 +330,11 @@ class ProtoRouter(object):
 
             # Reenviar paquete actual con MACs actualizadas (Los posteriores pasan por flujo)
             packet.src = PUBLIC_MAC
-            packet.dst = H1_MAC
+            packet.dst = target_mac
             msg = of.ofp_packet_out()
             msg.data = packet.pack()
             msg.actions.append(of.ofp_action_output(port=PUBLIC_PORT))
-            log_color(CYAN, f"ENVIANDO: {ip_pkt.srcip} → {ip_pkt.dstip} | MAC: {PUBLIC_MAC} → {H1_MAC} | Out Port: {PUBLIC_PORT}")
+            log_color(CYAN, f"ENVIANDO: {ip_pkt.srcip} → {ip_pkt.dstip} | MAC: {PUBLIC_MAC} → {target_mac} | Out Port: {PUBLIC_PORT}")
             self.connection.send(msg)
 
         else:
