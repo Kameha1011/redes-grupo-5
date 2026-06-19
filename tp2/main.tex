@@ -97,16 +97,16 @@ Cuando un host intenta enviar un paquete y desconoce la dirección MAC de su pue
 
 Adicionalmente, el controlador aprende de forma proactiva observando todo el tráfico ARP entrante (tanto Requests como Replies). Cuando procesa estas tramas, extrae la información del emisor y registra o actualiza la relación entre la dirección IP y la dirección MAC en una tabla ARP dinámica interna (\texttt{arp\_table}).
 
-El aspecto más crítico de este mecanismo surge cuando el switch debe enrutar un paquete IP hacia un host (por ejemplo, hacia el servidor público) y desconoce su dirección MAC. Para no bloquear el hilo de ejecución del controlador, se diseñó una resolución \textbf{asincrónica}:
+El aspecto más crítico de este mecanismo surge cuando el switch debe enrutar un paquete IP hacia un destino (ya sea hacia el servidor público exterior o hacia un host privado interno) y desconoce su dirección MAC y su puerto físico. Para no bloquear el hilo de ejecución del controlador, se diseñó una resolución \textbf{asincrónica}:
 \begin{enumerate}
-    \item Se consulta la IP de destino en la tabla ARP del \texttt{ArpHandler}.
-    \item Si la MAC no existe, se suspende momentáneamente el procesamiento de ese flujo. El paquete IP original (o evento) se almacena en una cola de espera (\texttt{waiting\_queue}), agrupado bajo la IP de destino que se desea resolver.
-    \item El controlador genera y envía proactivamente su propio ARP Request hacia el puerto correspondiente, preguntando por la MAC del dispositivo destinatario.
-    \item Dado que el procesamiento en POX está orientado a eventos, el controlador queda liberado para procesar otras tareas.
-    \item Cuando finalmente se recibe el paquete ARP Reply del dispositivo, el controlador registra su MAC en la tabla. Inmediatamente después, desencola todos los eventos que estaban en pausa esperando por dicha IP y los reinyecta en el flujo principal de procesamiento (\texttt{\_handle\_PacketIn}), despachándolos en orden estricto de llegada (FIFO).
+    \item Se consulta la IP de destino en la tabla ARP del \texttt{ArpHandler} para obtener su MAC y puerto.
+    \item Si la información no existe, se suspende momentáneamente el procesamiento de ese flujo. El paquete IP original (o evento) se almacena en una cola de espera (\texttt{waiting\_queue}), agrupado bajo la IP de destino que se desea resolver.
+    \item El controlador genera y envía proactivamente su propio ARP Request. Si el tráfico se dirige a la red pública, el request sale por el puerto WAN conocido (\texttt{PUBLIC\_PORT}). Sin embargo, si el tráfico ingresa hacia la red privada y se desconoce la ubicación exacta del host, el request se envía mediante una inundación (\textit{flood} vía \texttt{of.OFPP\_FLOOD}) por todos los puertos locales para localizar físicamente al dispositivo.
+    \item Dado que el procesamiento en POX está orientado a eventos, el controlador queda liberado para procesar otras tareas sin interrupciones.
+    \item Cuando finalmente se recibe el paquete ARP Reply del dispositivo, el controlador aprende y registra tanto su MAC como su puerto de conexión en la tabla. Inmediatamente después, desencola todos los eventos que estaban en pausa esperando por dicha IP y los reinyecta en el flujo principal de procesamiento (\texttt{\_handle\_PacketIn}), despachándolos en orden estricto de llegada (FIFO).
 \end{enumerate}
 
-Este sistema garantiza no solo la eliminación de las dependencias estáticas en la topología, sino que asegura que no se pierdan paquetes IP legítimos mientras se lleva a cabo el proceso de descubrimiento de red.
+Este sistema garantiza no solo la eliminación de las dependencias estáticas en la topología, sino que asegura un enrutamiento totalmente dinámico donde no se pierden paquetes IP legítimos mientras se lleva a cabo el proceso de descubrimiento de red.
 
 
 % --- SECCIÓN 4 ---

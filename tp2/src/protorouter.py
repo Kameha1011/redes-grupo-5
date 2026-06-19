@@ -246,11 +246,17 @@ class ProtoRouter(object):
         if arp_pkt.opcode != arp.REQUEST:
             return
 
-        source_ip = PRIVATE_IP
-        source_mac = PRIVATE_MAC
         if target_ip == PUBLIC_IP:
             source_ip = PUBLIC_IP
             source_mac = PUBLIC_MAC
+        elif target_ip == PRIVATE_IP:
+            source_ip = PRIVATE_IP
+            source_mac = PRIVATE_MAC
+        else:
+            # Si alguien pregunta por una IP que no es nuestra, ignoramos el paquete.
+            # (El switch se encargará de forwardearlo si es tráfico L2 normal, o lo ignoramos)
+            return
+            
         self._send_arp_reply(
             target_ip=sender_ip,
             target_mac=sender_mac,
@@ -338,7 +344,56 @@ class ProtoRouter(object):
             self.connection.send(msg)
 
         else:
-            log_color(RED, f"NO MATCH: {ip_pkt.srcip} no pertenece a {PRIVATE_SUBNET}/{PRIVATE_MASK}")
+            log_color(GREEN, f"Tráfico entrante: {ip_pkt.srcip} -> {ip_pkt.dstip}")
+
+            target_mac = self.arp_handler.get_mac(ip_pkt.dstip)
+            target_port = self.arp_handler.get_port(ip_pkt.dstip)
+
+            if not target_mac or not target_port:
+                self.arp_handler.enqueue_packet(ip_pkt.dstip, event)
+                self._send_arp_request(target_ip=ip_pkt.dstip, out_port=of.OFPP_FLOOD, source_ip=PRIVATE_IP, source_mac=PRIVATE_MAC)
+                return
+
+            # Instalar Flujo Entrante (Público -> Privado)
+            fm = of.ofp_flow_mod()
+            fm.idle_timeout = 10
+
+            # Filtro (Entrante)
+            fm.match.nw_src = ip_pkt.srcip
+            fm.match.nw_dst = ip_pkt.dstip
+            fm.match.dl_type = 0x800  # IPv4
+            fm.match.in_port = in_port
+
+            # Acción (Entrante)
+            fm.actions.append(of.ofp_action_dl_addr.set_src(PRIVATE_MAC))
+            fm.actions.append(of.ofp_action_dl_addr.set_dst(target_mac))
+            fm.actions.append(of.ofp_action_output(port=target_port))
+            self.connection.send(fm)
+
+            # Instalar Flujo Saliente (Privado -> Público) para la respuesta
+            fm_back = of.ofp_flow_mod()
+            fm_back.idle_timeout = 10
+
+            # Filtro (Saliente)
+            fm_back.match.nw_src = ip_pkt.dstip
+            fm_back.match.nw_dst = ip_pkt.srcip
+            fm_back.match.dl_type = 0x800  # IPv4
+            fm_back.match.in_port = target_port
+
+            # Acción (Saliente)
+            fm_back.actions.append(of.ofp_action_dl_addr.set_src(PUBLIC_MAC))
+            fm_back.actions.append(of.ofp_action_dl_addr.set_dst(packet.src))
+            fm_back.actions.append(of.ofp_action_output(port=in_port))
+            self.connection.send(fm_back)
+
+            # Reenviar paquete actual con MACs actualizadas
+            packet.src = PRIVATE_MAC
+            packet.dst = target_mac
+            msg = of.ofp_packet_out()
+            msg.data = packet.pack()
+            msg.actions.append(of.ofp_action_output(port=target_port))
+            log_color(CYAN, f"ENVIANDO: {ip_pkt.srcip} → {ip_pkt.dstip} | MAC: {PRIVATE_MAC} → {target_mac} | Out Port: {target_port}")
+            self.connection.send(msg)
 
 
 def launch():
