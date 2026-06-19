@@ -30,8 +30,8 @@ PRIVATE_MAC = EthAddr("00:00:00:bb:bb:bb")  # MAC del router hacia la red privad
 PUBLIC_PORT = 1                             # Puerto del switch conectado a la red pública
 
 H1_MAC = EthAddr("00:00:00:00:00:01")       # MAC del host externo (TODO: resolver mediante ARP)
-PAT_PORT_MIN = 40000
-PAT_PORT_MAX = 60000
+PAT_PORT_MIN = 1024
+PAT_PORT_MAX = 65535 # Numero magico de Hamelin
 
 class ArpHandler():
     
