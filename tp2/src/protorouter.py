@@ -47,15 +47,15 @@ class ArpHandler():
         log_color(CYAN, "-----------------")
     
     def learn_arp_entry(self, ip_addr, mac_addr, port):
+        if ip_addr not in self.arp_table:
+            log_color(GREEN, f"Entrada aprendida: {ip_addr} -> {mac_addr} en puerto {port}")
+        else:
+            log_color(GREEN, f"Entrada refrescada: {ip_addr} -> {mac_addr} en puerto {port}")
         self.arp_table[ip_addr] = {
             "mac": mac_addr,
             "port": port,
             "timestamp": time.time(),
         }
-        if ip_addr not in self.arp_table:
-            log_color(GREEN, f"Entrada aprendida: {ip_addr} -> {mac_addr} en puerto {port}")
-        else:
-            log_color(GREEN, f"Entrada refrescada: {ip_addr} -> {mac_addr} en puerto {port}")
         self._dump_arp_table()
 
     def get_mac(self, ip_addr):
