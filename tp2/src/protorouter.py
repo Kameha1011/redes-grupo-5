@@ -99,7 +99,7 @@ class ArpHandler():
         request.hwlen = 6
         request.protolen = 4
         request.opcode = arp.REQUEST
-        request.hwdst = EthAddr("ff:ff:ff:ff:ff:ff")
+        request.hwdst = EthAddr("00:00:00:00:00:00")
         request.protodst = target_ip
         request.hwsrc = source_mac
         request.protosrc = source_ip
