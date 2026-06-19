@@ -8,6 +8,15 @@ from mininet.link import TCLink
 from mininet.log import setLogLevel
 
 
+import argparse
+
+
+# Por defecto, la topología es como la de abajo
+MIN_PRIVATE_IP_HOST_ADDRESS = 2 # No 1, porque queremos que las IPs coincidan con las MAC por simplificación y como el servidor tiene MAC 1, el primer host privado tiene una MAC 2 (e IP 2)
+MAX_PRIVATE_IP_HOST_ADDRESS = 253 # No 254 porque esa es la dirección de la interfaz privada del switch
+AVAILABLE_PRIVATE_IP_HOST_ADDRESSES = MAX_PRIVATE_IP_HOST_ADDRESS - MIN_PRIVATE_IP_HOST_ADDRESS + 1
+
+
 #                                      Tráfico Saliente
 #
 #                                      <---------------
@@ -29,42 +38,36 @@ from mininet.log import setLogLevel
 
 
 class NATTopo(Topo):
+    def __init__(self, n_hosts=1, **opts):
+        self.n_hosts = n_hosts
+        super(NATTopo, self).__init__(**opts)
+
     def build(self):
+        # Switch
         s1 = self.addSwitch('s1')
 
+        # Servidor publico
         h1 = self.addHost(
-            "h1",
+            name="h1",
             ip="200.0.0.1/24",
+            mac="00:00:00:00:00:00",
             defaultRoute="via 200.0.0.254"
         )
-
-        h2 = self.addHost(
-            "h2",
-            ip="192.168.1.2/24",
-            defaultRoute="via 192.168.1.254"
-        )
-
-        h3 = self.addHost(
-            "h3",
-            ip="192.168.1.3/24",
-            defaultRoute="via 192.168.1.254"
-        )
-
-        h4 = self.addHost(
-            "h4",
-            ip="192.168.1.4/24",
-            defaultRoute="via 192.168.1.254"
-        )
-        s1 = self.addSwitch('s1')
-
         self.addLink(h1, s1)
-        self.addLink(h2, s1)
-        self.addLink(h3, s1)
-        self.addLink(h4, s1)
+
+        # Hosts privados
+        for i in range(MIN_PRIVATE_IP_HOST_ADDRESS, MIN_PRIVATE_IP_HOST_ADDRESS + self.n_hosts):
+            hi = self.addHost(
+                "h" + str(i),
+                ip="192.168.1." + str(i) +"/24",
+                mac="00:00:00:00:00:" + f"{i:02x}",
+                defaultRoute="via 192.168.1.254"
+            )
+            self.addLink(hi, s1)
 
 
-def run():
-    topo = NATTopo()
+def run(n_hosts=1):
+    topo = NATTopo(n_hosts=n_hosts)
     net = Mininet(topo=topo, controller=RemoteController, link=TCLink)
     net.start()
 
@@ -84,6 +87,20 @@ def run():
     net.stop()
 
 
+def get_private_hosts_count():
+    parser = argparse.ArgumentParser(description='Run Mininet topology with a specified number of private hosts.')
+    parser.add_argument(
+        '-ph', '--private-hosts', type=int, default=1,
+        help=f'Number of hosts in the private network (1-{AVAILABLE_PRIVATE_IP_HOST_ADDRESSES}, default: 1)'
+    )
+    args = parser.parse_args()
+    
+    if not (1 <= args.private_hosts <= AVAILABLE_PRIVATE_IP_HOST_ADDRESSES):
+        parser.error(f"The number of private hosts must be between 1 and {AVAILABLE_PRIVATE_IP_HOST_ADDRESSES}.")
+    
+    return args.private_hosts
+
 if __name__ == '__main__':
     setLogLevel('info')
-    run()
+    n_hosts = get_private_hosts_count()
+    run(n_hosts)
