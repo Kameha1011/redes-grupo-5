@@ -238,7 +238,7 @@ class ProtoRouter(object):
             target_mac=sender_mac,
             target_port=in_port,
             source_ip=source_ip,
-            source_mac=source_mac,
+            source_mac=source_mac, # Acá es donde el switch/router comparte su MAC address (ya sea de su interfaz pública o privada)
         )
 
     def handle_ip(self, event):
