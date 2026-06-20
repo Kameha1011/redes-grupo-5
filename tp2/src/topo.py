@@ -50,7 +50,7 @@ class NATTopo(Topo):
         h1 = self.addHost(
             name="h1",
             ip="200.0.0.1/24",
-            mac="00:00:00:00:00:00",
+            mac="00:00:00:00:00:01", # Comentar si se quiere random
             defaultRoute="via 200.0.0.254"
         )
         self.addLink(h1, s1)
@@ -60,7 +60,7 @@ class NATTopo(Topo):
             hi = self.addHost(
                 "h" + str(i),
                 ip="192.168.1." + str(i) +"/24",
-                mac="00:00:00:00:00:" + f"{i:02x}",
+                mac="00:00:00:00:00:" + f"{i:02x}", # Comentar si se quiere random
                 defaultRoute="via 192.168.1.254"
             )
             self.addLink(hi, s1)
