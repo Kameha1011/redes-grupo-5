@@ -163,14 +163,65 @@ Esta estrategia cubre la mayoría de los casos prácticos, pero presenta una lim
 \section{Estrategia de Instalación de Flujos}
 \label{sec:estrategia_flujos}
 
-\begin{small}
-\color{blue}
-\textbf{Nota Provisoria para el Desarrollo:} 
-Acá se explica la interacción OpenFlow a través de \texttt{ofp_flow_mod}. Detallen la estrategia para instalar tanto el flujo saliente como el entrante (para el camino de regreso). Argumenten cómo esto minimiza la intervención del controlador (los paquetes subsiguientes de la conexión se procesan directamente en el switch S1) y justifiquen la elección de los parámetros de \texttt{idle_timeout} y/or \texttt{hard_timeout} para liberar recursos de la tabla del switch ante conexiones inactivas.
-\end{small}
+Cada vez que el controlador recibe el primer \textit{PacketIn} de una conexión (ya sea saliente o entrante), en lugar de traducir paquete por paquete, instala un par de flujos OpenFlow en el switch (\texttt{ofp\_flow\_mod}) para que los paquetes subsiguientes sean procesados directamente en el plano de datos, sin intervención del controlador. Esto minimiza el \textit{overhead} de comunicación entre el switch y el controlador, reduciendo drásticamente la latencia de los paquetes siguientes.
 
-\vspace{0.5cm}
-[Escribir aquí la estrategia de instalación de flujos...]
+\subsection{Flujo Saliente (Privado → Público)}
+\label{subsec:flow_out}
+
+Cuando un paquete IP proveniente de la red privada llega al controlador, se instala un flujo que matchea los siguientes campos de la cabecera del paquete original:
+
+\begin{verbatim}
+  in_port, dl_type=0x800, nw_src, nw_dst, nw_proto, tp_src, tp_dst
+\end{verbatim}
+
+Las acciones aplicadas por el switch al matchear este flujo son:
+
+\begin{enumerate}
+    \item Reemplazar la IP de origen por la IP pública del router (\texttt{set\_nw\_src}).
+    \item Reemplazar el puerto de origen por el puerto público asignado por PAT (\texttt{set\_tp\_src}).
+    \item Reemplazar la MAC de origen por la MAC de la interfaz pública (\texttt{set\_dl\_src}).
+    \item Reemplazar la MAC de destino por la MAC del \textit{gateway} público (\texttt{set\_dl\_dst}).
+    \item Enviar el paquete por el puerto público (\texttt{output:PUBLIC\_PORT}).
+\end{enumerate}
+
+\subsection{Flujo Entrante (Público → Privado)}
+\label{subsec:flow_in}
+
+Junto con el flujo saliente se instala un segundo flujo para el camino de retorno, de modo que la respuesta del servidor público también sea traducida automáticamente por el switch. Este flujo matchea:
+
+\begin{verbatim}
+  in_port=PUBLIC_PORT, dl_type=0x800, nw_src=<IP_destino_original>,
+  nw_dst=PUBLIC_IP, nw_proto, tp_src=<puerto_destino_original>,
+  tp_dst=<puerto_público_asignado>
+\end{verbatim}
+
+Y ejecuta las acciones inversas:
+
+\begin{enumerate}
+    \item Reemplazar la IP de destino por la IP privada original (\texttt{set\_nw\_dst}).
+    \item Reemplazar el puerto de destino por el puerto privado original (\texttt{set\_tp\_dst}).
+    \item Reemplazar la MAC de origen por la MAC de la interfaz privada (\texttt{set\_dl\_src}).
+    \item Reemplazar la MAC de destino por la MAC del host privado (\texttt{set\_dl\_dst}).
+    \item Enviar el paquete por el puerto privado de entrada (\texttt{output:<in\_port>}).
+\end{enumerate}
+
+\subsection{Misma Estrategia para Tráfico Entrante}
+\label{subsec:flow_in_reverse}
+
+Cuando el primer paquete de una conexión entrante (respuesta del servidor público que coincide con una entrada PAT existente) llega al controlador, se aplica exactamente la misma lógica pero con los roles intercambiados: primero se instala el flujo que traduce de público a privado y luego el flujo complementario para que los próximos paquetes de la subsecuente comunicación saliente también sean traducidos en el switch.
+
+\subsection{\textit{Idle Timeout} y Liberación de Recursos}
+\label{subsec:timeout}
+
+Todos los flujos se instalan con \texttt{idle\_timeout = ENTRY\_TIMEOUT} (10 segundos), sin \texttt{hard\_timeout}. Esto significa que un flujo permanece activo mientras haya tráfico en la conexión, y se elimina automáticamente tras 10 segundos de inactividad. La elección de un valor bajo permite:
+
+\begin{itemize}
+    \item Liberar rápidamente las entradas en la tabla de flujos del switch (un recurso finito y costoso).
+    \item Sincronizar de forma natural la limpieza del plano de datos con la limpieza del plano de control: el mismo valor de \texttt{ENTRY\_TIMEOUT} se utiliza en los métodos \texttt{\_reap\_nat\_table()} y \texttt{\_reap\_arp\_table()} para purgar las entradas obsoletas en el controlador.
+    \item Evitar que conexiones efímeras (como las de navegación web o consultas DNS) dejen residuos en las tablas del switch.
+\end{itemize}
+
+No se utiliza \texttt{hard\_timeout} porque eliminar un flujo de forma forzosa mientras la conexión aún está activa generaría \textit{PacketIn} innecesarios al controlador, degradando el rendimiento.
 
 
 % --- SECCIÓN 6 ---
