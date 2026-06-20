@@ -31,6 +31,7 @@ PUBLIC_PORT = 1                             # Puerto del switch conectado a la r
 
 PAT_PORT_MIN = 1024
 PAT_PORT_MAX = 65535 # Numero magico de Hamelin
+ENTRY_TIMEOUT = 10
 
 class ArpHandler():
     def __init__(self):
@@ -59,6 +60,7 @@ class ArpHandler():
         log_color(CYAN, "-----------------")
     
     def learn_arp_entry(self, ip_addr, mac_addr, port):
+        self._reap_arp_table()
         if ip_addr not in self.arp_table:
             log_color(GREEN, f"Entrada aprendida: {ip_addr} -> {mac_addr} en puerto {port}")
         else:
@@ -69,6 +71,13 @@ class ArpHandler():
             "timestamp": time.time(),
         }
         self._dump_arp_table()
+
+    def _reap_arp_table(self):
+        now = time.time()
+        expired = [ip for ip, data in self.arp_table.items()
+                   if now - data["timestamp"] > ENTRY_TIMEOUT]
+        for ip in expired:
+            del self.arp_table[ip]
 
     def get_mac(self, ip_addr):
         if ip_addr in self.arp_table:
@@ -146,6 +155,21 @@ class NatHandler():
         if PAT_PORT_MIN <= public_port <= PAT_PORT_MAX:
             self.public_port_pool.add(public_port)
 
+    def _reap_nat_table(self):
+        now = time.time()
+        expired = []
+        for nat_key, data in self.nat_table.items():
+            if now - data["timestamp"] > ENTRY_TIMEOUT:
+                expired.append(nat_key)
+
+        for nat_key in expired:
+            data = self.nat_table.pop(nat_key)
+            protocol, private_ip, private_port = nat_key
+            reverse_key = (protocol, data["public_ip"], data["public_port"])
+            if reverse_key in self.reverse_nat:
+                del self.reverse_nat[reverse_key]
+            self.release_public_port(data["public_port"])
+
     def _dump_nat_table(self):
         log_color(CYAN, "--- NAT TABLE ---")
         log_color(CYAN, "PROTO\tPRIVATE\t\tPUBLIC\t\t\tAGE")
@@ -158,6 +182,7 @@ class NatHandler():
         log_color(CYAN, "-----------------")
 
     def create_pat_entry(self, protocol, private_ip, private_port, public_ip):
+        self._reap_nat_table()
         nat_key = (protocol, private_ip, private_port)
 
         if nat_key in self.nat_table:
@@ -195,6 +220,7 @@ class NatHandler():
         return nat_entry
 
     def get_reverse_entry(self, protocol, public_ip, public_port):
+        self._reap_nat_table()
         reverse_key = (protocol, public_ip, public_port)
         if reverse_key in self.reverse_nat:
             return self.reverse_nat[reverse_key]
@@ -329,7 +355,7 @@ class ProtoRouter(object):
 
             # Instalar Flujo Saliente
             fm = of.ofp_flow_mod()
-            fm.idle_timeout = 10
+            fm.idle_timeout = ENTRY_TIMEOUT
 
             # Filtro (Saliente)
             fm.match.nw_src = ip_pkt.srcip
@@ -350,7 +376,7 @@ class ProtoRouter(object):
 
             # Instalar Flujo Entrante (para respuesta)
             fm_back = of.ofp_flow_mod()
-            fm_back.idle_timeout = 10
+            fm_back.idle_timeout = ENTRY_TIMEOUT
 
             # Filtro (Entrante)
             fm_back.match.nw_src = ip_pkt.dstip
@@ -418,7 +444,7 @@ class ProtoRouter(object):
 
             # Instalar Flujo Entrante (Público -> Privado)
             fm = of.ofp_flow_mod()
-            fm.idle_timeout = 10
+            fm.idle_timeout = ENTRY_TIMEOUT
 
             # Filtro (Entrante)
             fm.match.nw_src = ip_pkt.srcip
@@ -439,7 +465,7 @@ class ProtoRouter(object):
 
             # Instalar Flujo Saliente (Privado -> Público) para la respuesta
             fm_back = of.ofp_flow_mod()
-            fm_back.idle_timeout = 10
+            fm_back.idle_timeout = ENTRY_TIMEOUT
 
             # Filtro (Saliente)
             fm_back.match.nw_src = private_ip

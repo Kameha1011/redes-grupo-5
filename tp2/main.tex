@@ -108,6 +108,9 @@ El aspecto más crítico de este mecanismo surge cuando el switch debe enrutar u
 
 Este sistema garantiza no solo la eliminación de las dependencias estáticas en la topología, sino que asegura un enrutamiento totalmente dinámico donde no se pierden paquetes IP legítimos mientras se lleva a cabo el proceso de descubrimiento de red.
 
+\subsection{Limpieza de Entradas ARP Obsoletas}
+Para evitar que la tabla ARP interna del controlador acumule entradas de hosts que ya no están activos, se implementó un mecanismo de \textit{reap} en el método \texttt{\_reap\_arp\_table()}. Cada vez que se aprende o refresca una entrada (invocando \texttt{learn\_arp\_entry()}), se recorre la tabla y se eliminan todas aquellas entradas cuyo \textit{timestamp} supere los \texttt{ENTRY\_TIMEOUT} segundos (10\,s, mismo valor utilizado para el \texttt{idle\_timeout} de los flujos OpenFlow). De esta forma, el plano de control y el plano de datos se mantienen sincronizados: si el switch elimina un flujo por inactividad, la entrada ARP correspondiente también será purgada en la próxima operación de aprendizaje.
+
 
 % --- SECCIÓN 4 ---
 \section{Diseño de la Tabla NAT}
@@ -141,6 +144,19 @@ UDP & 192.168.1.3 & 40002 & 200.0.0.254 & 1025 \\
 \caption{Ejemplo de asignación de puertos en las tablas bidireccionales del PAT.}
 \label{tab:ejemplo_nat}
 \end{table}
+
+\subsection{Limpieza de Entradas NAT Expiradas}
+\label{subsec:gc_nat}
+
+Para evitar el agotamiento del pool de puertos públicos y mantener la coherencia con el plano de datos, se diseñó un mecanismo de \textit{garbage collection} dentro de \texttt{NatHandler}. El método \texttt{\_reap\_nat\_table()} itera sobre la \texttt{nat\_table} y elimina toda entrada cuyo \textit{timestamp} supere los \texttt{ENTRY\_TIMEOUT} segundos (10\,s). Por cada entrada eliminada se remueve también su contraparte en \texttt{reverse\_nat} y se libera el puerto público asociado mediante \texttt{release\_public\_port()}, devolviéndolo al conjunto de puertos disponibles para futuras conexiones.
+
+El reap se ejecuta de manera \textit{triggerada} (no por temporizador) en los dos puntos de entrada a la tabla NAT:
+\begin{itemize}
+    \item \texttt{create\_pat\_entry()}: antes de crear o consultar una traducción saliente.
+    \item \texttt{get\_reverse\_entry()}: antes de buscar una traducción entrante.
+\end{itemize}
+
+Esta estrategia cubre la mayoría de los casos prácticos, pero presenta una limitación conocida: si una conexión expira en el switch (por \texttt{idle\_timeout}) y posteriormente no se genera tráfico entrante ni saliente que pase por el controlador, la entrada NAT correspondiente nunca se reapará hasta que alguna de las dos funciones mencionadas sea invocada por una conexión completamente distinta. En escenarios de baja actividad, esto podría retrasar la liberación de puertos públicos. Una posible mejora futura sería incorporar un temporizador periódico independiente que ejecute el reap de forma asíncrona, desacoplando la limpieza de los puntos de consulta del mapa.
 
 
 % --- SECCIÓN 5 ---
