@@ -183,7 +183,10 @@ class ProtoRouter(object):
             return
 
         if ip_pkt.srcip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK):
-            self._handle_outgoing(event, protocol, src_port, dst_port)
+            if ip_pkt.dstip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK):
+                self._handle_private_to_private(event)
+            else:
+                self._handle_outgoing(event, protocol, src_port, dst_port)
         else:
             self._handle_incoming(event, protocol, src_port, dst_port)
 
@@ -264,6 +267,47 @@ class ProtoRouter(object):
         self._clear_checksums(ip_pkt)
         self._send_packet(packet, PUBLIC_MAC, target_mac, PUBLIC_PORT,
             f"NAT OUT: {ip_pkt.srcip}:{public_port} → {ip_pkt.dstip}:{dst_port} | Out: {PUBLIC_PORT}")
+
+    def _handle_private_to_private(self, event):
+        packet = event.parsed
+        ip_pkt = packet.payload
+
+        logger.log_color(logger.GREEN, f"PRIV->PRIV: {ip_pkt.srcip} → {ip_pkt.dstip}")
+
+        target_mac, target_port = self._resolve_mac_and_port(
+            ip_pkt.dstip, event, of.OFPP_FLOOD, PRIVATE_IP, PRIVATE_MAC)
+        if not target_mac:
+            return
+
+        self._install_flow(
+            match={
+                "nw_src": ip_pkt.srcip, "nw_dst": ip_pkt.dstip,
+                "dl_type": 0x800,
+                "in_port": event.port,
+            },
+            actions=[
+                of.ofp_action_dl_addr.set_src(PRIVATE_MAC),
+                of.ofp_action_dl_addr.set_dst(target_mac),
+                of.ofp_action_output(port=target_port),
+            ]
+        )
+
+        self._install_flow(
+            match={
+                "nw_src": ip_pkt.dstip, "nw_dst": ip_pkt.srcip,
+                "dl_type": 0x800,
+                "in_port": target_port,
+            },
+            actions=[
+                of.ofp_action_dl_addr.set_src(PRIVATE_MAC),
+                of.ofp_action_dl_addr.set_dst(packet.src),
+                of.ofp_action_output(port=event.port),
+            ]
+        )
+
+        self._clear_checksums(ip_pkt)
+        self._send_packet(packet, PRIVATE_MAC, target_mac, target_port,
+            f"PRIV->PRIV: {ip_pkt.srcip} → {ip_pkt.dstip} | Out Port: {target_port}")
 
     def _handle_incoming(self, event, protocol, src_port, dst_port):
         packet = event.parsed
