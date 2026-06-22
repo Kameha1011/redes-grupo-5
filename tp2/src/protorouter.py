@@ -324,13 +324,13 @@ class ProtoRouter(object):
         logger.log_color(logger.GREEN, f"Tráfico entrante: {ip_pkt.srcip} -> {ip_pkt.dstip}")
 
         if protocol == "ICMP":
-            reverse_entry = self.icmp_handler.get_reverse_entry(PUBLIC_IP, dst_port)
-            if not reverse_entry:
+            reverse_icmp_entry = self.icmp_handler.get_reverse_entry(PUBLIC_IP, dst_port)
+            if not reverse_icmp_entry:
                 logger.log_color(logger.RED, "[DROP] ICMP sin entrada activa")
                 return
 
-            private_ip = reverse_entry["private_ip"]
-            private_id = reverse_entry["private_id"]
+            private_ip = reverse_icmp_entry["private_ip"]
+            private_id = reverse_icmp_entry["private_id"]
 
             target_mac, target_port = self._resolve_mac_and_port(private_ip, event, of.OFPP_FLOOD, PRIVATE_IP, PRIVATE_MAC)
             if not target_mac:
