@@ -228,14 +228,111 @@ No se utiliza \texttt{hard\_timeout} porque eliminar un flujo de forma forzosa m
 \section{Decisiones de Diseño}
 \label{sec:decisiones_diseno}
 
-\begin{small}
-\color{blue}
-\textbf{Nota Provisoria para el Desarrollo:} 
-Justifiquen sus elecciones de código. Ejemplos: algoritmo para la asignación de puertos públicos (¿secuencial, aleatorio?), manejo de colisiones de puertos, cómo decidieron estructurar las clases en POX, o cómo se gestionó la limpieza de estados obsoletos en el controlador cuando un flujo expira en el switch.
-\end{small}
+\subsection{Separación de Responsabilidades en Handlers}
+\label{subsec:handlers}
 
-\vspace{0.5cm}
-[Escribir aquí las decisiones de diseño...]
+Se optó por modelar cada funcionalidad del plano de control en una clase independiente: \texttt{ArpHandler} (resolución de direcciones), \texttt{NatHandler} (traducción PAT para TCP/UDP) e \texttt{IcmpHandler} (traducción de IDs para ICMP). El orquestador \texttt{ProtoRouter} las instancia como atributos propios y las utiliza sin conocer los detalles internos de cada una. Esta decisión sigue el principio de responsabilidad única (SRP): cada clase encapsula su propio estado (tablas, pools de recursos) y su lógica asociada, lo que facilita la lectura, el mantenimiento y eventuales pruebas unitarias.
+
+\subsection{Tabla NAT Bidireccional}
+\label{subsec:tabla_bidireccional}
+
+Para soportar la traducción en ambos sentidos con complejidad $O(1)$, se implementaron dos diccionarios paralelos:
+
+\begin{itemize}
+    \item \textbf{\texttt{nat\_table}}: clave \texttt{(protocolo, IP\_privada, puerto\_privado)} $\rightarrow$ datos de la traducción saliente.
+    \item \textbf{\texttt{reverse\_nat}}: clave \texttt{(protocolo, IP\_pública, puerto\_público)} $\rightarrow$ datos de la traducción entrante.
+\end{itemize}
+
+Con un solo diccionario, la búsqueda inversa (necesaria cuando llega un paquete del servidor público) requeriría recorrer todas las entradas en $O(n)$. La duplicación controlada de índices es una compensación aceptable de memoria por velocidad de consulta, crítica para el procesamiento en tiempo real de paquetes.
+
+\subsection{Algoritmo de Asignación de Puertos Públicos}
+\label{subsec:asignacion_puertos}
+
+El método \texttt{allocate\_public\_port()} selecciona el puerto disponible más bajo mediante \texttt{min()} sobre el conjunto \texttt{public\_port\_pool}. Se descartaron alternativas como:
+
+\begin{itemize}
+    \item \textbf{Asignación secuencial con índice}: requeriría mantener un contador global y lógica de \textit{wraparound}, además de gestionar huecos dejados por puertos liberados.
+    \item \textbf{Asignación aleatoria}: introduce impredecibilidad, lo que dificulta la depuración.
+\end{itemize}
+
+La función \texttt{min()} sobre un \texttt{set} produce un comportamiento determinista: los puertos se reasignan desde el valor más bajo disponible, llenando naturalmente los huecos dejados por conexiones finalizadas. Esto replica de forma simplificada la política de puertos efímeros de los sistemas operativos.
+
+\subsection{Pool de Puertos como \texttt{set} de Python}
+\label{subsec:pool_set}
+
+El conjunto de puertos públicos disponibles se implementa como un \texttt{set} de Python con el rango $[1024, 65535]$. Se privilegiaron los \texttt{set} sobre listas o colas porque:
+\begin{itemize}
+    \item Las operaciones de inserción (\texttt{add}) y eliminación (\texttt{remove}) son $O(1)$.
+    \item La estructura garantiza ausencia de duplicados, incluso si \texttt{release\_public\_port()} se invocara múltiples veces sobre el mismo puerto por error.
+\end{itemize}
+El rango comienza en 1024 para excluir puertos privilegiados (0--1023) y reservados (por ejemplo, 22, 80, 443), evitando colisiones con servicios estándar.
+
+\subsection{Estrategia de Limpieza de Entradas Expiradas}
+\label{subsec:reap}
+
+Se implementó un mecanismo de \textit{garbage collection} triggerado (no por temporizador) para depurar las tablas NAT, ARP e ICMP. Cada método público de consulta o creación ejecuta el reap antes de operar:
+
+\begin{itemize}
+    \item \texttt{create\_pat\_entry()} y \texttt{get\_reverse\_entry()} invocan \texttt{\_reap\_nat\_table()}.
+    \item \texttt{learn\_arp\_entry()} invoca \texttt{\_reap\_arp\_table()}.
+    \item Los métodos análogos de \texttt{IcmpHandler} siguen el mismo patrón.
+\end{itemize}
+
+Se descartó un temporizador periódico independiente para mantener el diseño simple y acoplado al flujo de eventos. La limitación conocida es que, en escenarios de inactividad total donde no se reciben \textit{PacketIn}, las entradas expiradas pueden permanecer hasta que una nueva conexión active el reap. Para un entorno académico con tráfico continuo durante las pruebas, esta estrategia es suficiente.
+
+\subsection{Sincronización de Timeouts con \texttt{ENTRY\_TIMEOUT}}
+\label{subsec:entry_timeout}
+
+Se definió la constante \texttt{ENTRY\_TIMEOUT = 10} (segundos) que se utiliza tanto para el \texttt{idle\_timeout} de los flujos OpenFlow como para la expiración de las entradas en los tres handlers (NAT, ARP e ICMP). Esta decisión garantiza coherencia temporal entre el plano de datos (switch) y el plano de control (controlador): cuando el switch elimina un flujo por inactividad, el controlador purga el estado asociado aproximadamente en el mismo intervalo. No se emplea \texttt{hard\_timeout} para evitar que un flujo se elimine forzosamente mientras la conexión sigue activa, lo que generaría \textit{PacketIn} innecesarios.
+
+\subsection{Resolución ARP Asincrónica con \texttt{waiting\_queue}}
+\label{subsec:arp_async}
+
+Cuando se necesita resolver una dirección MAC y la tabla ARP no contiene la entrada, el controlador no bloquea el procesamiento. En lugar de ello:
+\begin{enumerate}
+    \item Encola el evento (\texttt{PacketIn}) original en \texttt{waiting\_queue[IP\_destino]}.
+    \item Envía proactivamente un ARP Request (por el puerto público conocido o mediante flooding en la red privada).
+    \item Retorna el control al reactor de POX para procesar otros eventos.
+    \item Al recibir el ARP Reply, aprende la entrada y desencola todos los eventos pendientes para reinyectarlos en el flujo principal.
+\end{enumerate}
+Este diseño es obligatorio en un framework orientado a eventos como POX, donde no es posible realizar esperas bloqueantes. Además, garantiza que ningún paquete IP legítimo se pierda durante la resolución.
+
+\subsection{Instalación de Pares de Flujos Bidireccionales y Traducción del Primer Paquete}
+\label{subsec:flujos_pares}
+
+Por cada nueva conexión se instalan dos flujos OpenFlow (saliente y entrante) de forma simultánea. Esto minimiza la intervención del controlador: una vez instalados, todos los paquetes subsiguientes se traducen directamente en el switch. Como el primer paquete de la conexión no debe esperar a que los flujos se instalen para ser reenviado, el controlador lo traduce en software y lo envía inmediatamente mediante un \texttt{ofp\_packet\_out}. Los paquetes siguientes son manejados por los flujos en el plano de datos.
+
+\subsection{Delegación del Cálculo de Checksums}
+\label{subsec:checksums}
+
+Después de modificar direcciones IP, puertos o IDs ICMP, se asignan los campos \texttt{csum} a \texttt{None}. POX recalcula automáticamente los checksums IP y de transporte al empaquetar la trama. Esta decisión evita implementar manualmente el cálculo de checksums y reduce la probabilidad de errores en la traducción.
+
+\subsection{Manejo de ICMP como Protocolo Especial}
+\label{subsec:icmp}
+
+ICMP no posee puertos de transporte; utiliza un \texttt{icmp\_id} (campo \texttt{id} del \texttt{echo}) para identificar sesiones. Se creó un \texttt{IcmpHandler} independiente con su propio pool de IDs, análogo estructural al \texttt{NatHandler}. La función \texttt{\_get\_transport\_fields()} extrae el \texttt{icmp\_id} tanto como \texttt{src\_port} como \texttt{dst\_port}, lo que simplifica el manejo simétrico en los métodos \texttt{\_handle\_outgoing} y \texttt{\_handle\_incoming}.
+
+\subsection{Filtrado de Protocolos No Soportados}
+\label{subsec:filtrado}
+
+Se definió la tupla \texttt{SUPPORTED\_PROTOCOLS = ("TCP", "UDP", "ICMP")}. Cualquier paquete IP con un protocolo de transporte diferente es descartado. Esta decisión se fundamenta en que PAT requiere inspeccionar puertos de transporte (TCP/UDP) o IDs (ICMP); protocolos como SCTP, GRE o IPIP carecen de este concepto y no pueden ser traducidos con este esquema.
+
+\subsection{Refactorización con Métodos Auxiliares}
+\label{subsec:refactor}
+
+El código de \texttt{ProtoRouter} se organizó en métodos auxiliares reutilizables para evitar duplicación y mejorar la legibilidad:
+
+\begin{itemize}
+    \item \texttt{\_install\_flow()}: recibe un diccionario de campos match y una lista de acciones, construye y envía el \texttt{ofp\_flow\_mod}. Esto eliminó la repetición del bloque de instalación de flujos que antes aparecía cuatro veces.
+    \item \texttt{\_resolve\_mac()} y \texttt{\_resolve\_mac\_and\_port()}: encapsulan la lógica de consulta ARP, encolado y envío de ARP Request.
+    \item \texttt{\_clear\_checksums()}: centraliza la invalidación de checksums.
+    \item \texttt{\_send\_packet()}: construye y envía el \texttt{ofp\_packet\_out} con el logging correspondiente.
+\end{itemize}
+
+\subsection{Uso de Constantes Descriptivas}
+\label{subsec:constantes}
+
+Todos los parámetros configurables (subred privada, IPs, MACs, puertos, timeouts) se definen como constantes en el ámbito del módulo, eliminando valores mágicos dispersos en el código. Esto facilita la modificación de la configuración sin necesidad de buscar literales en el cuerpo de las funciones.
 
 
 % --- SECCIÓN 7 ---
