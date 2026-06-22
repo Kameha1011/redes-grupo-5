@@ -147,6 +147,14 @@ class ProtoRouter(object):
         for ev in events_to_resume:
             self._handle_PacketIn(ev)
 
+        # ARP entre hosts privados → flood para que el destino/remitente lo reciba
+        if sender_ip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK) \
+                and target_ip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK) \
+                and target_ip != PRIVATE_IP:
+            self._send_packet(event.parsed, packet.src, packet.dst, of.OFPP_FLOOD,
+                f"ARP flooded: {sender_ip} → {target_ip}")
+            return
+
         if arp_pkt.opcode != arp.REQUEST:
             return
 
