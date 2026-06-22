@@ -209,16 +209,16 @@ class ProtoRouter(object):
             return
 
         if protocol == "ICMP":
-            pat_entry = self.icmp_handler.create_entry(
+            icmp_entry = self.icmp_handler.create_entry(
                 private_ip=ip_pkt.srcip,
                 private_id=src_port,
                 public_ip=PUBLIC_IP,
             )
-            if not pat_entry:
+            if not icmp_entry:
                 logger.log_color(logger.RED, "[DROP] No se pudo crear entrada ICMP")
                 return
 
-            public_id = pat_entry["public_id"]
+            public_id = icmp_entry["public_id"]
             ip_pkt.next.next.id = public_id
             ip_pkt.srcip = PUBLIC_IP
             self._clear_checksums(ip_pkt)
