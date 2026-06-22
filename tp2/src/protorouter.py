@@ -347,13 +347,13 @@ class ProtoRouter(object):
             logger.log_color(logger.RED, f"Tráfico entrante descartado (Destino no es la IP pública {PUBLIC_IP})")
             return
 
-        reverse_entry = self.nat_handler.get_reverse_entry(protocol, ip_pkt.dstip, dst_port)
-        if not reverse_entry:
+        reverse_pat_entry = self.nat_handler.get_reverse_entry(protocol, ip_pkt.dstip, dst_port)
+        if not reverse_pat_entry:
             logger.log_color(logger.RED, f"[DROP] No hay conexión PAT activa para {protocol} puerto {dst_port}")
             return
 
-        private_ip = reverse_entry["private_ip"]
-        private_port = reverse_entry["private_port"]
+        private_ip = reverse_pat_entry["private_ip"]
+        private_port = reverse_pat_entry["private_port"]
 
         target_mac, target_port = self._resolve_mac_and_port(private_ip, event, of.OFPP_FLOOD, PRIVATE_IP, PRIVATE_MAC)
         if not target_mac:
