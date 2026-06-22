@@ -1,11 +1,8 @@
 import time
 import util.logger as logger
+from util.constants import ICMP_ID_MIN, ICMP_ID_MAX, ENTRY_TIMEOUT
 from pox.lib.packet.icmp import icmp, echo, TYPE_ECHO_REQUEST, TYPE_ECHO_REPLY
 from pox.lib.packet.icmp import TYPE_DEST_UNREACH, TYPE_TIME_EXCEED
-
-ICMP_ID_MIN = 1024
-ICMP_ID_MAX = 65535
-ENTRY_TIMEOUT = 10
 
 class IcmpHandler():
     def __init__(self):

@@ -1,11 +1,10 @@
 import time
 import util.logger as logger
+from util.constants import ENTRY_TIMEOUT
 from pox.lib.addresses import EthAddr
 from pox.lib.packet.arp import arp
 from pox.lib.packet.ethernet import ethernet
 import pox.openflow.libopenflow_01 as of
-
-ENTRY_TIMEOUT = 10
 
 class ArpHandler():
     def __init__(self):

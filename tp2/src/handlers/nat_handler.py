@@ -1,9 +1,6 @@
 import time
 import util.logger as logger
-
-PAT_PORT_MIN = 1024
-PAT_PORT_MAX = 65535
-ENTRY_TIMEOUT = 10
+from util.constants import PAT_PORT_MIN, PAT_PORT_MAX, ENTRY_TIMEOUT
 
 class NatHandler():
     def __init__(self):

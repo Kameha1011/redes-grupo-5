@@ -1,7 +1,6 @@
 # Import some POX stuff
 from pox.core import core                       # Main POX object
 import pox.openflow.libopenflow_01 as of        # OpenFlow 1.0 library
-from pox.lib.addresses import EthAddr, IPAddr   # Address types
 from pox.lib.packet.arp import arp
 from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.tcp import tcp
@@ -17,25 +16,22 @@ import os
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 import util.logger as logger
+from util.constants import (
+    PRIVATE_SUBNET,
+    PRIVATE_MASK,
+    PRIVATE_IP,
+    PUBLIC_IP,
+    PUBLIC_MAC,
+    PRIVATE_MAC,
+    PUBLIC_PORT,
+    SUPPORTED_PROTOCOLS,
+    ENTRY_TIMEOUT,
+)
 from handlers.arp_handler import ArpHandler
 from handlers.nat_handler import NatHandler
 from handlers.icmp_handler import IcmpHandler
 
 import time
-
-PRIVATE_SUBNET = IPAddr("192.168.1.0")      # Red interna
-PRIVATE_MASK = 24                           # Máscara de la red interna
-PRIVATE_IP = IPAddr("192.168.1.254")        # IP del router en la red privada
-PUBLIC_IP = IPAddr("200.0.0.254")           # IP del router en la red pública
-PUBLIC_MAC = EthAddr("00:00:00:aa:aa:aa")   # MAC del router hacia la red pública
-PRIVATE_MAC = EthAddr("00:00:00:bb:bb:bb")  # MAC del router hacia la red privada
-PUBLIC_PORT = 1                             # Puerto del switch conectado a la red pública
-
-SUPPORTED_PROTOCOLS = ("TCP", "UDP", "ICMP")        
-
-PAT_PORT_MIN = 1024
-PAT_PORT_MAX = 65535 # Numero magico de Hamelin
-ENTRY_TIMEOUT = 10
 
 class ProtoRouter(object):
     def __init__(self, connection):
