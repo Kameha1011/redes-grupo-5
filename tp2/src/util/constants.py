@@ -3,8 +3,7 @@ Constantes compartidas por el router (ProtoRouter) y sus handlers
 (ARP, NAT/PAT, ICMP).
 
 Se centralizan acá para evitar definiciones duplicadas o inconsistentes
-entre módulos (por ejemplo, PAT_PORT_MIN/MAX estaba repetido en
-protorouter.py y nat_handler.py).
+entre módulos.
 """
 
 from pox.lib.addresses import EthAddr, IPAddr
