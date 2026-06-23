@@ -24,7 +24,7 @@ SUPPORTED_PROTOCOLS = ("TCP", "UDP", "ICMP")
 
 # --- Tablas de estado (ARP / NAT-PAT / ICMP) ----------------------------
 
-ENTRY_TIMEOUT = 10  # Tiempo (s) tras el cual una entrada se considera expirada
+ENTRY_TIMEOUT = 30  # Tiempo (s) tras el cual una entrada se considera expirada
 
 # Rango de puertos públicos para PAT (NAT)
 PAT_PORT_MIN = 1024
