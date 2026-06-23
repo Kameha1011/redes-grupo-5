@@ -48,8 +48,10 @@
 
 \author{
     \textbf{Integrantes:} \\
-    Apellido, Nombre - Padrón \\
-    Apellido, Nombre - Padrón \\
+    Campoliete, Manuel - 110479 \\
+    Flores, Omar - 112186 \\
+    Olmos, Gonzalo - ? \\
+    Thome, Milagros - 110684 \\
     [2cm]
 }
 \date{23 de Junio de 2026} % Fecha de entrega pautada
@@ -346,7 +348,57 @@ Sección obligatoria para demostrar los dolores de cabeza del TP. Pueden listar 
 \end{small}
 
 \vspace{0.5cm}
-[Escribir aquí los problemas y soluciones...]
+
+\subsection{Checksums Incorrectos al Traducir Paquetes}
+
+Durante las primeras pruebas de conectividad, observamos que los paquetes IP modificados por el controlador (por ejemplo, un ping desde un host privado hacia el servidor público) nunca llegaban a su destino. Utilizando \texttt{tcpdump} y Wireshark para inspeccionar el tráfico en ambos extremos, notamos que los paquetes eran enviados correctamente por el switch, pero el receptor los descartaba silenciosamente.
+
+Luego de analizar las capturas, descubrimos que el problema radicaba en los checksums: al modificar campos como la dirección IP de origen, el puerto de origen o el identificador ICMP, los checksums de la cabecera IP (\texttt{csum}) y de la capa de transporte (\texttt{next.csum}) quedaban desactualizados. El switch no recalcula estos valores automáticamente, por lo que se enviaban con un checksum inválido y el receptor los descartaba.
+
+\subsubsection{Solución Implementada}
+
+Para resolverlo, creamos el método \texttt{\_clear\_checksums()}, que asigna \texttt{None} a ambos checksums antes de serializar y enviar el paquete:
+
+\begin{lstlisting}[language=Python, caption=Método \texttt{\_clear\_checksums} en \texttt{protorouter.py}.]
+def _clear_checksums(self, ip_pkt):
+    ip_pkt.csum = None
+    ip_pkt.next.csum = None
+\end{lstlisting}
+
+Al establecer los checksums en \texttt{None}, la librería POX los recalcula automáticamente durante la serialización (\texttt{pack()}), garantizando que el paquete llegue con valores correctos al destino. Esta solución se aplica en todos los puntos donde se modifican campos de IP, transporte o ICMP antes de enviar el paquete.
+
+\subsection{Comunicación ARP entre Hosts Privados}
+
+Un problema real que nos tomó bastante tiempo diagnosticar fue la imposibilidad de que dos hosts de la red privada se comunicaran entre sí. En nuestra topología, todos los hosts privados (h2, h3, etc.) están conectados directamente al mismo switch. Cuando h2 quería comunicarse con h3, enviaba un ARP Request con dirección Ethernet de broadcast y dirección IP de destino igual a la IP de h3.
+
+El ARP Request llegaba al switch, que al no tener un flujo instalado para ese tráfico, lo reenviaba al controlador mediante un \texttt{PacketIn}. En ese momento, el controlador procesaba el paquete e inspeccionaba la IP de destino del ARP. Como esta IP no coincidía ni con \texttt{PUBLIC\_IP} ni con \texttt{PRIVATE\_IP} (las IPs del router), nuestra lógica original descartaba el paquete silenciosamente al llegar al \texttt{else} del bloque de comparación:
+
+\begin{lstlisting}[language=Python, caption=Lógica original que descartaba ARP entre privados.]
+if target_ip == PUBLIC_IP:
+    # ...
+elif target_ip == PRIVATE_IP:
+    # ...
+else:
+    return  # <-- Aca se descartaba el ARP entre privados
+\end{lstlisting}
+
+Como consecuencia, h2 nunca recibía una respuesta ARP, no podía resolver la MAC de h3 y la comunicación entre ambos era imposible.
+
+\subsubsection{Solución Implementada}
+
+La solución fue agregar una verificación temprana: si tanto el emisor como el destino del ARP Request pertenecen a la subred privada y el destino no es la IP del router, el paquete se reenvía mediante \textit{flooding} (\texttt{of.OFPP\_FLOOD}) por todos los puertos del switch. De esta forma, el ARP Request llega al host destino (h3), que responde directamente con un ARP Reply, y la comunicación privada-privada funciona con normalidad.
+
+\begin{lstlisting}[language=Python, caption=Flooding de ARP entre hosts privados agregado en \texttt{handle\_arp()}.]
+# ARP entre hosts privados -> flood para que el destino lo reciba
+if sender_ip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK) \
+        and target_ip.inNetwork(PRIVATE_SUBNET, PRIVATE_MASK) \
+        and target_ip != PRIVATE_IP:
+    self._send_packet(event.parsed, packet.src, packet.dst, of.OFPP_FLOOD,
+        f"ARP flooded: {sender_ip} -> {target_ip}")
+    return
+\end{lstlisting}
+
+Esta solución no es la más elegante desde el punto de vista arquitectónico, ya que idealmente el switch debería poder manejar este tráfico ARP directamente en el plano de datos sin involucrar al controlador. Sin embargo, dado que al iniciar la red no hay flujos instalados y el switch envía todo al controlador, el flooding controlado por el controller es suficiente para que el ARP Reply se genere y la tabla ARP de h2 se complete, permitiendo la comunicación subsiguiente.
 
 
 % --- SECCIÓN 8 ---
